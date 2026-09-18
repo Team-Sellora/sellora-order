@@ -1,0 +1,57 @@
+
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{D19D2E87-A904-4CCC-8EBF-08DDEB0F1060}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{3064F4FE-8744-4094-B942-EDD951DFE39E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sellora.OrderService.Domain", "src\Sellora.OrderService.Domain\Sellora.OrderService.Domain.csproj", "{3BD352A3-6417-4D10-ACAF-C257863EA1DA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sellora.OrderService.Application", "src\Sellora.OrderService.Application\Sellora.OrderService.Application.csproj", "{83352C89-809C-4559-84D4-EF24FA7384B8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sellora.OrderService.Infrastructure", "src\Sellora.OrderService.Infrastructure\Sellora.OrderService.Infrastructure.csproj", "{923DCA98-25EF-49F0-985C-504583DC9637}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sellora.OrderService.Api", "src\Sellora.OrderService.Api\Sellora.OrderService.Api.csproj", "{3EE9315A-9E06-46BE-ACE3-327843308E3B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Sellora.OrderService.Tests", "tests\Sellora.OrderService.Tests\Sellora.OrderService.Tests.csproj", "{A3DDD964-51ED-4A14-B4EC-829E855F63CC}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3BD352A3-6417-4D10-ACAF-C257863EA1DA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3BD352A3-6417-4D10-ACAF-C257863EA1DA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3BD352A3-6417-4D10-ACAF-C257863EA1DA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3BD352A3-6417-4D10-ACAF-C257863EA1DA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{83352C89-809C-4559-84D4-EF24FA7384B8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{83352C89-809C-4559-84D4-EF24FA7384B8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{83352C89-809C-4559-84D4-EF24FA7384B8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{83352C89-809C-4559-84D4-EF24FA7384B8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{923DCA98-25EF-49F0-985C-504583DC9637}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{923DCA98-25EF-49F0-985C-504583DC9637}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{923DCA98-25EF-49F0-985C-504583DC9637}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{923DCA98-25EF-49F0-985C-504583DC9637}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3EE9315A-9E06-46BE-ACE3-327843308E3B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3EE9315A-9E06-46BE-ACE3-327843308E3B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3EE9315A-9E06-46BE-ACE3-327843308E3B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3EE9315A-9E06-46BE-ACE3-327843308E3B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A3DDD964-51ED-4A14-B4EC-829E855F63CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A3DDD964-51ED-4A14-B4EC-829E855F63CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A3DDD964-51ED-4A14-B4EC-829E855F63CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A3DDD964-51ED-4A14-B4EC-829E855F63CC}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3BD352A3-6417-4D10-ACAF-C257863EA1DA} = {D19D2E87-A904-4CCC-8EBF-08DDEB0F1060}
+		{83352C89-809C-4559-84D4-EF24FA7384B8} = {D19D2E87-A904-4CCC-8EBF-08DDEB0F1060}
+		{923DCA98-25EF-49F0-985C-504583DC9637} = {D19D2E87-A904-4CCC-8EBF-08DDEB0F1060}
+		{3EE9315A-9E06-46BE-ACE3-327843308E3B} = {D19D2E87-A904-4CCC-8EBF-08DDEB0F1060}
+		{A3DDD964-51ED-4A14-B4EC-829E855F63CC} = {3064F4FE-8744-4094-B942-EDD951DFE39E}
+	EndGlobalSection
+EndGlobal
