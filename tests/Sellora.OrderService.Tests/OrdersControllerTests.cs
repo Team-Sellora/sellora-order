@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Sellora.OrderService.Api.Contracts;
 using Sellora.OrderService.Api.Controllers;
@@ -8,6 +9,49 @@ namespace Sellora.OrderService.Tests;
 
 public sealed class OrdersControllerTests
 {
+    private static OrdersController Controller(CreateOrderResult result) => new(new CreationSpy(result), null!)
+    {
+        ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+    };
+
+    [Fact]
+    public async Task Verification_failure_is_422_naming_the_step_and_specifics()
+    {
+        var rejection = new OrderRejection(
+            "StockReservation",
+            "Soap: requested 10, only 4 available (short by 6).",
+            new[] { new StepOutcome("StockReservation", false, "short") },
+            Shortages: new[] { new StockShortage(Guid.NewGuid(), "Soap", 10, 4, 6) });
+
+        var result = await Controller(CreateOrderResult.Rejected(CreateOrderOutcome.VerificationFailed, rejection))
+            .Create(new CreateOrderRequestBody(), CancellationToken.None);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(422, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal("StockReservation", problem.Extensions["failedStep"]);
+        Assert.True(problem.Extensions.ContainsKey("shortages"));
+        Assert.False(problem.Extensions.ContainsKey("credit"));
+    }
+
+    [Fact]
+    public async Task Unavailable_dependency_is_503_with_its_name_and_retry_after()
+    {
+        var rejection = new OrderRejection(
+            "StockReservation",
+            "Inventory service is currently unavailable, please retry shortly.",
+            Array.Empty<StepOutcome>(),
+            Dependency: "Inventory");
+        var controller = Controller(CreateOrderResult.Rejected(CreateOrderOutcome.DependencyUnavailable, rejection));
+
+        var result = await controller.Create(new CreateOrderRequestBody(), CancellationToken.None);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(503, objectResult.StatusCode);
+        Assert.Equal("Inventory", Assert.IsType<ProblemDetails>(objectResult.Value).Extensions["dependency"]);
+        Assert.Equal("30", controller.Response.Headers.RetryAfter.ToString());
+    }
+
     private sealed class CreationSpy(CreateOrderResult result) : IOrderCreationService
     {
         public CreateOrderRequest? Received { get; private set; }
@@ -25,13 +69,17 @@ public sealed class OrdersControllerTests
         Assert.Null(typeof(CreateOrderRequestBody).GetProperty("Total"));
         Assert.Null(typeof(CreateOrderRequestBody).GetProperty("Subtotal"));
         Assert.Null(typeof(CreateOrderLineRequestBody).GetProperty("LineTotal"));
+        // US-E4-1b: prices come from Catalog only.
+        Assert.Null(typeof(CreateOrderLineRequestBody).GetProperty("UnitPrice"));
+        Assert.Null(typeof(CreateOrderLineRequestBody).GetProperty("ProductName"));
 
         // Same JSON options as MVC: unknown "total" is silently dropped.
         var body = JsonSerializer.Deserialize<CreateOrderRequestBody>(
-            """{ "shopId": "11111111-1111-1111-1111-111111111111", "total": 1, "subtotal": 1, "lines": [] }""",
+            """{ "shopId": "11111111-1111-1111-1111-111111111111", "total": 1, "subtotal": 1, "lines": [{ "productId": "22222222-2222-2222-2222-222222222222", "quantity": 2, "unitPrice": 1 }] }""",
             new JsonSerializerOptions(JsonSerializerDefaults.Web));
 
         Assert.NotNull(body);
+        Assert.Equal(2, Assert.Single(body!.Lines!).Quantity);
     }
 
     [Theory]
@@ -55,7 +103,7 @@ public sealed class OrdersControllerTests
     {
         var order = new OrderResponse(Guid.NewGuid(), "ORD-260918-ABCDEF", Guid.NewGuid(), Guid.NewGuid(),
             Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Submitted", DateTimeOffset.UtcNow, 10m, 10m,
-            Array.Empty<OrderLineResponse>());
+            Guid.NewGuid(), Array.Empty<OrderLineResponse>(), Array.Empty<OrderVerificationStepResponse>());
 
         var controller = new OrdersController(new CreationSpy(CreateOrderResult.Created(order)), null!);
 
