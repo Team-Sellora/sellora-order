@@ -1,0 +1,65 @@
+name: CD - Staging
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    branches: [main, dev]
+    types: [completed]
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  AZURE_WEBAPP_NAME: sellora-order
+
+jobs:
+  deploy-staging:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    environment:
+      name: staging
+      url: https://sellora-order-staging.azurewebsites.net
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore src/Sellora.Order.sln
+
+      - name: Build
+        run: dotnet build src/Sellora.Order.sln --no-restore --configuration Release
+
+      - name: Publish
+        run: |
+          dotnet publish src/Sellora.Order.Api/Sellora.Order.Api.csproj \
+            --no-build \
+            --configuration Release \
+            --output ./publish
+
+      - name: Deploy to Staging Slot
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: staging
+          publish-profile: ${{ secrets.AZURE_PUBLISH_PROFILE_STAGING }}
+          package: ./publish
+
+      - name: Health Check
+        run: |
+          for i in $(seq 1 24); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+              https://sellora-order-staging.azurewebsites.net/health 2>/dev/null || echo "000")
+            echo "Attempt $i: HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Health check passed"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Health check failed after 120s"
+          exit 1
