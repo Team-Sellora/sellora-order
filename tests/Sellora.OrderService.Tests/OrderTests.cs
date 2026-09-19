@@ -1,0 +1,92 @@
+using Sellora.OrderService.Domain.Entities;
+using Sellora.OrderService.Domain.Orders;
+
+namespace Sellora.OrderService.Tests;
+
+public sealed class OrderTests
+{
+    private static Order CreateWith(params NewOrderLine[] lines) => Order.Create(
+        Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+        Guid.NewGuid(), Guid.NewGuid(), "ORD-260918-ABCDEF",
+        DateTimeOffset.UtcNow, lines);
+
+    private static NewOrderLine Line(int quantity = 1, decimal price = 10m, Guid? productId = null, string name = "Soap") =>
+        new(productId ?? Guid.NewGuid(), name, quantity, price);
+
+    [Fact]
+    public void Totals_are_computed_from_lines()
+    {
+        var order = CreateWith(Line(3, 120.50m), Line(2, 1150.00m));
+
+        Assert.Equal(361.50m, order.Lines.Single(l => l.Quantity == 3).LineTotal);
+        Assert.Equal(2661.50m, order.Subtotal);
+        Assert.Equal(order.Subtotal, order.Total);
+        Assert.Equal(OrderStatus.Submitted, order.Status);
+    }
+
+    [Fact]
+    public void Snapshots_keep_the_values_given_at_creation()
+    {
+        var productId = Guid.NewGuid();
+        var order = CreateWith(Line(1, 99.99m, productId, "  Anchor Milk 400g  "));
+        var line = order.Lines.Single();
+
+        Assert.Equal(productId, line.ProductId);
+        Assert.Equal("Anchor Milk 400g", line.ProductNameSnapshot);
+        Assert.Equal(99.99m, line.UnitPriceSnapshot);
+        Assert.Equal(order.OrderId, line.OrderId);
+    }
+
+    [Fact]
+    public void Empty_basket_is_rejected()
+    {
+        var ex = Assert.Throws<OrderRuleViolationException>(() => CreateWith());
+        Assert.Contains("at least one line", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-4)]
+    public void Non_positive_quantity_is_rejected_and_named(int quantity)
+    {
+        var line = Line(quantity);
+        var ex = Assert.Throws<OrderRuleViolationException>(() => CreateWith(line));
+
+        Assert.Contains("quantity", ex.Message);
+        Assert.Contains(line.ProductId.ToString(), ex.Message);
+    }
+
+    [Fact]
+    public void Duplicate_product_is_rejected_and_named()
+    {
+        var productId = Guid.NewGuid();
+        var ex = Assert.Throws<OrderRuleViolationException>(() =>
+            CreateWith(Line(productId: productId), Line(productId: productId)));
+
+        Assert.Contains("more than once", ex.Message);
+        Assert.Contains(productId.ToString(), ex.Message);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(10.555)]
+    public void Invalid_unit_price_is_rejected(double price)
+    {
+        Assert.Throws<OrderRuleViolationException>(() => CreateWith(Line(price: (decimal)price)));
+    }
+
+    [Fact]
+    public void Too_many_lines_are_rejected()
+    {
+        var lines = Enumerable.Range(0, Order.MaxLines + 1).Select(_ => Line()).ToArray();
+        Assert.Throws<OrderRuleViolationException>(() => CreateWith(lines));
+    }
+
+    [Fact]
+    public void Missing_shop_is_rejected()
+    {
+        Assert.Throws<OrderRuleViolationException>(() => Order.Create(
+            Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(), "ORD-260918-ABCDEF", DateTimeOffset.UtcNow, new[] { Line() }));
+    }
+}
