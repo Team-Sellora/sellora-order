@@ -8,6 +8,7 @@ using Sellora.OrderService.Api.Tenancy;
 using Sellora.OrderService.Application.Identity;
 using Sellora.OrderService.Application.Orders;
 using Sellora.OrderService.Domain.Tenancy;
+using Sellora.OrderService.Infrastructure.Dependencies;
 using Sellora.OrderService.Infrastructure.Orders;
 using Sellora.OrderService.Infrastructure.Persistence;
 using Serilog;
@@ -63,6 +64,11 @@ builder.Services.AddScoped<HttpTenantContext>();
 builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<HttpTenantContext>());
 builder.Services.AddScoped<ISystemTenantContext>(sp => sp.GetRequiredService<HttpTenantContext>());
 builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
+builder.Services.AddScoped<IAccessTokenAccessor, HttpAccessTokenAccessor>();
+
+// US-E4-1b: Organization, Catalog and Inventory clients with timeouts and
+// circuit breakers. Registration only — startup never calls them.
+builder.Services.AddOrderDependencies(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 
 var connectionString = builder.Configuration.GetConnectionString("Default");
