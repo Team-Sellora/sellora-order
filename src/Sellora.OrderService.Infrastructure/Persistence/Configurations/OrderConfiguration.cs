@@ -43,6 +43,9 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .HasMaxLength(32)
             .IsRequired();
 
+        builder.Property(order => order.ReservationId).HasColumnName("reservation_id").HasColumnType("uuid").IsRequired();
+        builder.Property(order => order.InventoryOwnerId).HasColumnName("inventory_owner_id").HasColumnType("uuid").IsRequired();
+
         builder.Property(order => order.Subtotal).HasColumnName("subtotal").HasPrecision(18, 2).IsRequired();
         builder.Property(order => order.Total).HasColumnName("total").HasPrecision(18, 2).IsRequired();
 
@@ -55,6 +58,19 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Navigation(order => order.Lines)
             .HasField("_lines")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(order => order.VerificationSteps)
+            .WithOne()
+            .HasForeignKey(step => step.OrderId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_order_verification_step_customer_order");
+
+        builder.Navigation(order => order.VerificationSteps)
+            .HasField("_verificationSteps")
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasIndex(order => order.ReservationId)
+            .HasDatabaseName("ix_customer_order_reservation");
 
         builder.HasIndex(order => new { order.CompanyId, order.OrderReference })
             .IsUnique()
@@ -96,5 +112,26 @@ public sealed class OrderLineConfiguration : IEntityTypeConfiguration<OrderLine>
         builder.HasIndex(line => new { line.OrderId, line.ProductId })
             .IsUnique()
             .HasDatabaseName("uq_order_line_order_product");
+    }
+}
+
+public sealed class OrderVerificationStepConfiguration : IEntityTypeConfiguration<OrderVerificationStep>
+{
+    public void Configure(EntityTypeBuilder<OrderVerificationStep> builder)
+    {
+        builder.ToTable("order_verification_step");
+
+        builder.HasKey(step => step.OrderVerificationStepId).HasName("pk_order_verification_step");
+
+        builder.Property(step => step.OrderVerificationStepId).HasColumnName("order_verification_step_id").HasColumnType("uuid").ValueGeneratedNever();
+        builder.Property(step => step.OrderId).HasColumnName("order_id").HasColumnType("uuid").IsRequired();
+        builder.Property(step => step.Step).HasColumnName("step").HasConversion<string>().HasMaxLength(40).IsRequired();
+        builder.Property(step => step.Passed).HasColumnName("passed").IsRequired();
+        builder.Property(step => step.Detail).HasColumnName("detail").HasMaxLength(1000).IsRequired();
+        builder.Property(step => step.RecordedAt).HasColumnName("recorded_at").HasColumnType("timestamp with time zone").IsRequired();
+
+        builder.HasIndex(step => new { step.OrderId, step.Step })
+            .IsUnique()
+            .HasDatabaseName("uq_order_verification_step_order_step");
     }
 }

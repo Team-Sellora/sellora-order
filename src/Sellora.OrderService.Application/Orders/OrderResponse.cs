@@ -10,6 +10,12 @@ public sealed record OrderLineResponse(
     decimal UnitPriceSnapshot,
     decimal LineTotal);
 
+public sealed record OrderVerificationStepResponse(
+    string Step,
+    bool Passed,
+    string Detail,
+    DateTimeOffset RecordedAt);
+
 public sealed record OrderResponse(
     Guid OrderId,
     string OrderReference,
@@ -22,7 +28,9 @@ public sealed record OrderResponse(
     DateTimeOffset OrderDate,
     decimal Subtotal,
     decimal Total,
-    IReadOnlyList<OrderLineResponse> Lines)
+    Guid ReservationId,
+    IReadOnlyList<OrderLineResponse> Lines,
+    IReadOnlyList<OrderVerificationStepResponse> VerificationSteps)
 {
     public static OrderResponse From(Order order) => new(
         order.OrderId,
@@ -36,6 +44,7 @@ public sealed record OrderResponse(
         order.OrderDate,
         order.Subtotal,
         order.Total,
+        order.ReservationId,
         order.Lines
             .OrderBy(line => line.ProductNameSnapshot)
             .Select(line => new OrderLineResponse(
@@ -45,6 +54,14 @@ public sealed record OrderResponse(
                 line.Quantity,
                 line.UnitPriceSnapshot,
                 line.LineTotal))
+            .ToList(),
+        order.VerificationSteps
+            .OrderBy(step => step.Step)
+            .Select(step => new OrderVerificationStepResponse(
+                step.Step.ToString(),
+                step.Passed,
+                step.Detail,
+                step.RecordedAt))
             .ToList());
 }
 
