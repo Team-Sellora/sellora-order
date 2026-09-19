@@ -25,9 +25,17 @@ public sealed class EndpointOptions
 
     /// <summary>
     /// Per-call budget. Short on purpose: a rep at a shop counter should get
-    /// a clear rejection, not a spinner. Four sequential calls stay under ~12s.
+    /// a clear rejection, not a spinner. A normal order makes four sequential
+    /// calls, so the worst case stays around 8s.
     /// </summary>
-    public double TimeoutSeconds { get; set; } = 3;
+    public double TimeoutSeconds { get; set; } = 2;
+
+    /// <summary>
+    /// Catalog only: shared secret for its /internal/* routes, sent as
+    /// X-Internal-Api-Key. Must equal Catalog's InternalApi:ApiKey.
+    /// Keep it out of git — set it via App Service settings or user-secrets.
+    /// </summary>
+    public string InternalApiKey { get; set; } = string.Empty;
 }
 
 public sealed class CircuitBreakerSettings
@@ -62,9 +70,17 @@ public static class DependencyRegistration
             .AddResilience("organization", options.Organization, options.CircuitBreaker)
             .AddHttpMessageHandler<ForwardBearerTokenHandler>();
 
-        // Anonymous internal endpoint: no token handler.
+        // Catalog's /internal routes take a shared key, not the user's token.
         services.AddHttpClient<ICatalogClient, CatalogClient>(client =>
-                client.BaseAddress = BaseAddress(options.Catalog, "Catalog"))
+            {
+                client.BaseAddress = BaseAddress(options.Catalog, "Catalog");
+
+                if (!string.IsNullOrWhiteSpace(options.Catalog.InternalApiKey))
+                {
+                    client.DefaultRequestHeaders.Add(
+                        CatalogClient.InternalApiKeyHeader, options.Catalog.InternalApiKey);
+                }
+            })
             .AddResilience("catalog", options.Catalog, options.CircuitBreaker);
 
         services.AddHttpClient<IInventoryClient, InventoryClient>(client =>

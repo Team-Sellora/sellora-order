@@ -4,11 +4,15 @@ using Sellora.OrderService.Application.Dependencies;
 namespace Sellora.OrderService.Infrastructure.Dependencies;
 
 /// <summary>
-/// sellora-catalog's internal resolve endpoint is [AllowAnonymous] (an
-/// internal network call), so no token is forwarded.
+/// sellora-catalog's internal resolve endpoint is [AllowAnonymous] for JWTs
+/// but guarded by Catalog's InternalApiKeyMiddleware: every /internal/*
+/// request needs the shared X-Internal-Api-Key header (added at registration).
+/// The user's token is deliberately not forwarded.
 /// </summary>
 public sealed class CatalogClient : ICatalogClient
 {
+    public const string InternalApiKeyHeader = "X-Internal-Api-Key";
+
     private readonly HttpClient _http;
 
     public CatalogClient(HttpClient http) => _http = http;

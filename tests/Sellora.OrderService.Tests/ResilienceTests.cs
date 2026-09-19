@@ -13,7 +13,7 @@ namespace Sellora.OrderService.Tests;
 /// <summary>US-E4-1b-T3: real Polly pipelines, fake slow dependency.</summary>
 public sealed class ResilienceTests
 {
-    private static ServiceProvider Build(HttpMessageHandler primary)
+    private static ServiceProvider Build(HttpMessageHandler primary, string? catalogKey = null)
     {
         var configuration = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?>
@@ -21,6 +21,7 @@ public sealed class ResilienceTests
                 ["Dependencies:Organization:BaseUrl"] = "http://organization.test",
                 ["Dependencies:Catalog:BaseUrl"] = "http://catalog.test",
                 ["Dependencies:Catalog:TimeoutSeconds"] = "0.2",
+                ["Dependencies:Catalog:InternalApiKey"] = catalogKey,
                 ["Dependencies:Inventory:BaseUrl"] = "http://inventory.test",
                 ["Dependencies:CircuitBreaker:MinimumThroughput"] = "2",
                 ["Dependencies:CircuitBreaker:FailureRatio"] = "0.5",
@@ -86,6 +87,19 @@ public sealed class ResilienceTests
         Assert.IsType<BrokenCircuitException>(exception.InnerException);
         Assert.True(clock.Elapsed < TimeSpan.FromMilliseconds(150), $"took {clock.Elapsed}");
         Assert.Equal(2, handler.Requests.Count);
+    }
+
+    [Fact]
+    public async Task Catalog_calls_carry_the_internal_api_key_and_no_user_token()
+    {
+        var handler = StubHttpHandler.Json(HttpStatusCode.OK, """{ "items": [] }""");
+        using var provider = Build(handler, catalogKey: "test-internal-key");
+
+        await Call(provider);
+
+        var request = handler.Requests.Single().Request;
+        Assert.Equal("test-internal-key", request.Headers.GetValues("X-Internal-Api-Key").Single());
+        Assert.Null(request.Headers.Authorization);
     }
 
     private sealed class NoToken : IAccessTokenAccessor
