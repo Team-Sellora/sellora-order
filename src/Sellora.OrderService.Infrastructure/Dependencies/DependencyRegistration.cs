@@ -54,7 +54,7 @@ public static class DependencyRegistration
     /// <summary>
     /// Registers the three typed clients, each with its own timeout and
     /// circuit breaker. Nothing here contacts the dependencies, so the app
-    /// starts and reports healthy even when they are unreachable (US-E4-1b-D2).
+    /// starts and reports healthy even when they are unreachable.
     /// </summary>
     public static IServiceCollection AddOrderDependencies(
         this IServiceCollection services,

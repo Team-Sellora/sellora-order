@@ -125,5 +125,39 @@ jobs:
           name: test-results
           path: ./TestResults
 
-      - name: Verify Docker image builds
+      - name: Build Docker image
         run: docker build -t sellora-order:ci .
+
+      - name: Verify health with unreachable dependencies
+        run: |
+          docker run -d --name sellora-order-ci \
+            --network host \
+            -e ASPNETCORE_ENVIRONMENT=Container \
+            -e ASPNETCORE_URLS="http://+:8099" \
+            -e ConnectionStrings__Default="Host=localhost;Port=5432;Database=order_ci;Username=sellora_ci;Password=sellora_ci_password" \
+            -e Dependencies__Organization__BaseUrl="http://org-svc.invalid" \
+            -e Dependencies__Catalog__BaseUrl="http://catalog-svc.invalid" \
+            -e Dependencies__Inventory__BaseUrl="http://inventory-svc.invalid" \
+            -e Jwt__Authority="https://auth.invalid" \
+            -e Jwt__MetadataAddress="https://auth.invalid/.well-known/openid-configuration" \
+            -e Jwt__Issuer="https://auth.invalid" \
+            -e Jwt__Audience__0="ci-audience" \
+            sellora-order:ci
+
+          for i in $(seq 1 15); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8099/health || echo "000")
+            if [ "$STATUS" = "200" ]; then
+              echo "/health returned 200"
+              break
+            fi
+            sleep 2
+          done
+
+          if [ "$STATUS" != "200" ]; then
+            docker logs sellora-order-ci
+            exit 1
+          fi
+
+      - name: Remove health-check container
+        if: always()
+        run: docker rm -f sellora-order-ci || true
