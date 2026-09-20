@@ -1,0 +1,27 @@
+@host = http://localhost:5198
+@token = paste-a-SalesRep-access-token-here
+
+### Create an order (prices are PROVISIONAL until US-E4-1b)
+POST {{host}}/api/orders
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "shopId": "11111111-1111-1111-1111-111111111111",
+  "agencyId": "22222222-2222-2222-2222-222222222222",
+  "territoryId": "33333333-3333-3333-3333-333333333333",
+  "provinceId": "44444444-4444-4444-4444-444444444444",
+  "total": 1,
+  "lines": [
+    { "productId": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "productName": "Sunlight Soap 100g", "quantity": 3, "unitPrice": 120.50 },
+    { "productId": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "productName": "Anchor Milk 400g", "quantity": 2, "unitPrice": 1150.00 }
+  ]
+}
+
+### List orders visible to the caller
+GET {{host}}/api/orders?page=1&pageSize=20
+Authorization: Bearer {{token}}
+
+### Get one order
+GET {{host}}/api/orders/00000000-0000-0000-0000-000000000000
+Authorization: Bearer {{token}}
