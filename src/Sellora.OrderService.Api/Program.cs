@@ -66,8 +66,6 @@ builder.Services.AddScoped<ISystemTenantContext>(sp => sp.GetRequiredService<Htt
 builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
 builder.Services.AddScoped<IAccessTokenAccessor, HttpAccessTokenAccessor>();
 
-// US-E4-1b: Organization, Catalog and Inventory clients with timeouts and
-// circuit breakers. Registration only — startup never calls them.
 builder.Services.AddOrderDependencies(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 

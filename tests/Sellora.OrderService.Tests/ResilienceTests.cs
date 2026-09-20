@@ -51,7 +51,6 @@ public sealed class ResilienceTests
     [Fact]
     public void Registration_does_not_contact_dependencies()
     {
-        // D2: resolving the clients must succeed with nothing listening.
         using var provider = Build(Slow());
 
         Assert.NotNull(provider.GetRequiredService<IOrganizationClient>());
