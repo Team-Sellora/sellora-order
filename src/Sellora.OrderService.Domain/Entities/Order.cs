@@ -16,6 +16,7 @@ public sealed class Order : ITenantScoped
     public const int MaxProductNameLength = 200;
 
     private readonly List<OrderLine> _lines = new();
+    private readonly List<OrderVerificationStep> _verificationSteps = new();
 
     private Order()
     {
@@ -46,7 +47,15 @@ public sealed class Order : ITenantScoped
 
     public decimal Total { get; private set; }
 
+    /// <summary>Inventory reservation holding this order's stock (US-E4-1b).</summary>
+    public Guid ReservationId { get; private set; }
+
+    public Guid InventoryOwnerId { get; private set; }
+
     public IReadOnlyCollection<OrderLine> Lines => _lines.AsReadOnly();
+
+    public IReadOnlyCollection<OrderVerificationStep> VerificationSteps =>
+        _verificationSteps.AsReadOnly();
 
     public static Order Create(
         Guid companyId,
@@ -105,7 +114,48 @@ public sealed class Order : ITenantScoped
         return order;
     }
 
-    private static void ValidateLines(IReadOnlyCollection<NewOrderLine>? lines)
+    /// <summary>
+    /// Records a completed verification chain and the reservation it produced.
+    /// Called once, before the order is first saved.
+    /// </summary>
+    public void CompleteVerification(
+        Guid reservationId,
+        Guid inventoryOwnerId,
+        IReadOnlyCollection<VerificationStepRecord> steps,
+        DateTimeOffset recordedAt)
+    {
+        if (ReservationId != Guid.Empty)
+        {
+            throw new InvalidOperationException("Verification has already been recorded for this order.");
+        }
+
+        RequireId(reservationId, "reservationId");
+        RequireId(inventoryOwnerId, "inventoryOwnerId");
+
+        var expected = Enum.GetValues<VerificationStep>();
+        if (steps.Count != expected.Length ||
+            !steps.Select(step => step.Step).SequenceEqual(expected) ||
+            steps.Any(step => !step.Passed))
+        {
+            throw new OrderRuleViolationException(
+                "An order can only be accepted after all four verification steps pass, in order.");
+        }
+
+        ReservationId = reservationId;
+        InventoryOwnerId = inventoryOwnerId;
+
+        foreach (var step in steps)
+        {
+            _verificationSteps.Add(new OrderVerificationStep(
+                OrderId, step.Step, step.Passed, step.Detail, recordedAt));
+        }
+    }
+
+    /// <summary>
+    /// Checks the rep's basket before any dependency is called: non-empty,
+    /// within the line cap, positive quantities, no duplicate products.
+    /// </summary>
+    public static void ValidateBasket(IReadOnlyCollection<BasketLine>? lines)
     {
         if (lines is null || lines.Count == 0)
         {
@@ -144,6 +194,18 @@ public sealed class Order : ITenantScoped
                 throw new OrderRuleViolationException(
                     $"Line {position}: quantity for product {line.ProductId} must be greater than zero.");
             }
+        }
+    }
+
+    private static void ValidateLines(IReadOnlyCollection<NewOrderLine>? lines)
+    {
+        ValidateBasket(lines?.Select(line => new BasketLine(line.ProductId, line.Quantity)).ToList());
+
+        var position = 0;
+
+        foreach (var line in lines!)
+        {
+            position++;
 
             if (string.IsNullOrWhiteSpace(line.ProductName))
             {

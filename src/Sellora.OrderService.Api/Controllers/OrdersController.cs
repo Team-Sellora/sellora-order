@@ -33,21 +33,16 @@ public sealed class OrdersController : ControllerBase
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
     public async Task<IActionResult> Create(
         CreateOrderRequestBody body,
         CancellationToken cancellationToken)
     {
         var request = new CreateOrderRequest(
             body.ShopId,
-            body.AgencyId,
-            body.TerritoryId,
-            body.ProvinceId,
             (body.Lines ?? Array.Empty<CreateOrderLineRequestBody>())
-                .Select(line => new NewOrderLine(
-                    line.ProductId,
-                    line.ProductName ?? string.Empty,
-                    line.Quantity,
-                    line.UnitPrice))
+                .Select(line => new BasketLine(line.ProductId, line.Quantity))
                 .ToList());
 
         var result = await _creation.CreateAsync(request, cancellationToken);
@@ -67,6 +62,12 @@ public sealed class OrdersController : ControllerBase
 
             CreateOrderOutcome.CallerNotSalesRep =>
                 ProblemResult(StatusCodes.Status403Forbidden, "Sales rep identity missing", result.Message),
+
+            CreateOrderOutcome.VerificationFailed =>
+                RejectionResult(StatusCodes.Status422UnprocessableEntity, "Order verification failed", result.Rejection!),
+
+            CreateOrderOutcome.DependencyUnavailable =>
+                RejectionResult(StatusCodes.Status503ServiceUnavailable, "Dependency unavailable", result.Rejection!),
 
             _ => StatusCode(StatusCodes.Status500InternalServerError)
         };
@@ -101,6 +102,46 @@ public sealed class OrdersController : ControllerBase
             ? ProblemResult(StatusCodes.Status404NotFound, "Order not found",
                 $"No order {orderId} is visible to the caller.")
             : Ok(order);
+    }
+
+    /// <summary>
+    /// A rejection names the failing step and the specifics a rep can act on
+    /// (short products, credit overrun, unpriced products, unavailable service).
+    /// </summary>
+    private ObjectResult RejectionResult(int status, string title, OrderRejection rejection)
+    {
+        var problem = new ProblemDetails
+        {
+            Status = status,
+            Title = title,
+            Detail = rejection.Reason
+        };
+
+        problem.Extensions["failedStep"] = rejection.FailedStep;
+        problem.Extensions["steps"] = rejection.Steps;
+
+        if (rejection.Shortages is not null)
+        {
+            problem.Extensions["shortages"] = rejection.Shortages;
+        }
+
+        if (rejection.Credit is not null)
+        {
+            problem.Extensions["credit"] = rejection.Credit;
+        }
+
+        if (rejection.UnresolvedProducts is not null)
+        {
+            problem.Extensions["unresolvedProducts"] = rejection.UnresolvedProducts;
+        }
+
+        if (rejection.Dependency is not null)
+        {
+            problem.Extensions["dependency"] = rejection.Dependency;
+            Response.Headers.RetryAfter = "30";
+        }
+
+        return StatusCode(status, problem);
     }
 
     private ObjectResult ProblemResult(int status, string title, string? detail) =>

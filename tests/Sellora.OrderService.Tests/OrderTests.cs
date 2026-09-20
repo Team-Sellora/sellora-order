@@ -89,4 +89,47 @@ public sealed class OrderTests
             Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
             Guid.NewGuid(), "ORD-260918-ABCDEF", DateTimeOffset.UtcNow, new[] { Line() }));
     }
+
+    [Fact]
+    public void Basket_is_validated_without_prices()
+    {
+        var productId = Guid.NewGuid();
+
+        Order.ValidateBasket(new[] { new BasketLine(productId, 2) });
+        Assert.Throws<OrderRuleViolationException>(() => Order.ValidateBasket(Array.Empty<BasketLine>()));
+        Assert.Throws<OrderRuleViolationException>(() =>
+            Order.ValidateBasket(new[] { new BasketLine(productId, 1), new BasketLine(productId, 1) }));
+        Assert.Throws<OrderRuleViolationException>(() => Order.ValidateBasket(new[] { new BasketLine(productId, 0) }));
+    }
+
+    [Fact]
+    public void Verification_records_all_four_steps_and_the_reservation_once()
+    {
+        var order = CreateWith(Line());
+        var reservationId = Guid.NewGuid();
+        var steps = Enum.GetValues<VerificationStep>()
+            .Select(step => new VerificationStepRecord(step, true, "ok"))
+            .ToArray();
+
+        order.CompleteVerification(reservationId, Guid.NewGuid(), steps, DateTimeOffset.UtcNow);
+
+        Assert.Equal(reservationId, order.ReservationId);
+        Assert.Equal(4, order.VerificationSteps.Count);
+        Assert.Throws<InvalidOperationException>(() =>
+            order.CompleteVerification(Guid.NewGuid(), Guid.NewGuid(), steps, DateTimeOffset.UtcNow));
+    }
+
+    [Fact]
+    public void Verification_refuses_a_failed_or_missing_step()
+    {
+        var order = CreateWith(Line());
+        var steps = Enum.GetValues<VerificationStep>()
+            .Select(step => new VerificationStepRecord(step, step != VerificationStep.CreditLimit, "x"))
+            .ToArray();
+
+        Assert.Throws<OrderRuleViolationException>(() =>
+            order.CompleteVerification(Guid.NewGuid(), Guid.NewGuid(), steps, DateTimeOffset.UtcNow));
+        Assert.Throws<OrderRuleViolationException>(() =>
+            order.CompleteVerification(Guid.NewGuid(), Guid.NewGuid(), steps.Take(3).ToArray(), DateTimeOffset.UtcNow));
+    }
 }

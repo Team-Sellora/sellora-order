@@ -23,7 +23,7 @@ public sealed class OrderReferenceGeneratorTests
     public void Random_part_is_well_spread()
     {
         // Duplicates are possible by design (birthday problem); the unique
-        // index plus retry in OrderCreationService is the real guarantee.
+        // index plus the pre-reservation uniqueness check are the real guarantee.
         // Here we only prove the generator is random, not stuck or biased.
         var references = Enumerable.Range(0, 1_000)
             .Select(_ => OrderReferenceGenerator.Generate(DateTimeOffset.UtcNow))

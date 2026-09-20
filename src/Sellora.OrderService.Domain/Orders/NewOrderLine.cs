@@ -1,9 +1,9 @@
 namespace Sellora.OrderService.Domain.Orders;
 
 /// <summary>
-/// Input for one order line. <see cref="UnitPrice"/> and
-/// <see cref="ProductName"/> are provisional client values until US-E4-1b
-/// replaces them with Catalog's resolved values.
+/// A priced order line. Since US-E4-1b, <see cref="ProductName"/> and
+/// <see cref="UnitPrice"/> always come from Catalog's resolve endpoint,
+/// never from the client.
 /// </summary>
 public sealed record NewOrderLine(
     Guid ProductId,
