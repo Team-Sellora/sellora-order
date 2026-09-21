@@ -38,13 +38,10 @@ jobs:
           docker push "${IMAGE}:${{ github.sha }}"
           docker push "${IMAGE}:staging"
 
-      - name: Deploy to staging slot
-        uses: azure/webapps-deploy@v3
-        with:
-          app-name: sellora-order
-          slot-name: staging
-          publish-profile: ${{ secrets.AZURE_STAGING_PUBLISH_PROFILE }}
-          images: ${{ secrets.DOCKERHUB_USERNAME }}/sellora-order:${{ github.sha }}
+      - name: Wait for Azure to pull and deploy new image
+        run: |
+          echo "Waiting 60s for Azure Deployment Center to pull the new :staging image..."
+          sleep 60
 
       - name: Validate deployed app startup
         shell: bash
@@ -55,7 +52,7 @@ jobs:
 
           HEALTH_URL="${BASE_URL}/health"
 
-          for attempt in {1..12}; do
+          for attempt in {1..20}; do
             HEALTH_STATUS=$(curl \
               --silent \
               --location \
@@ -69,7 +66,7 @@ jobs:
             fi
 
             echo "Attempt $attempt -> /health=${HEALTH_STATUS}"
-            sleep 10
+            sleep 15
           done
 
           echo "Deployment validation failed: app did not start with expected runtime configuration"
