@@ -43,6 +43,57 @@ public sealed class InventoryClient : IInventoryClient
             new { OrderReference = orderReference, InventoryOwnerId = inventoryOwnerId, Lines = ToBody(lines) },
             cancellationToken);
 
+    public async Task<Guid?> FindVanOwnerAsync(
+        Guid salesRepId,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, "api/inventory-owners");
+
+        using var response = await DependencyHttp.SendAsync(
+            _http, request, Dependency.Inventory, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new DependencyRejectedException(
+                Dependency.Inventory,
+                response.StatusCode,
+                await DependencyHttp.ReadErrorAsync(response, cancellationToken));
+        }
+
+        var owners = await DependencyHttp.ReadAsync<IReadOnlyCollection<InventoryOwnerResponse>>(
+            response, Dependency.Inventory, cancellationToken);
+
+        return owners
+            .Where(owner =>
+                string.Equals(owner.OwnerType, "SalesRep", StringComparison.OrdinalIgnoreCase) &&
+                owner.ExternalOwnerId == salesRepId)
+            .Select(owner => (Guid?)owner.InventoryOwnerId)
+            .FirstOrDefault();
+    }
+
+    public async Task<bool> ConfirmReservationAsync(
+        Guid reservationId,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(
+            HttpMethod.Post,
+            $"api/stock/reservations/{reservationId}/confirm");
+
+        using var response = await DependencyHttp.SendAsync(
+            _http, request, Dependency.Inventory, cancellationToken);
+
+        if (response.IsSuccessStatusCode)
+        {
+            return true;
+        }
+
+        _logger.LogError(
+            "Inventory refused to confirm reservation {ReservationId} (HTTP {Status}): {Detail}",
+            reservationId, (int)response.StatusCode,
+            await DependencyHttp.ReadErrorAsync(response, cancellationToken));
+        return false;
+    }
+
     public async Task<bool> ReleaseReservationAsync(
         Guid reservationId,
         CancellationToken cancellationToken)

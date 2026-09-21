@@ -50,6 +50,22 @@ public interface IInventoryClient
         IReadOnlyCollection<BasketLine> lines,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// GET /api/inventory-owners — the stock owner that represents this rep's
+    /// own van, or null when the rep carries no van stock.
+    /// </summary>
+    Task<Guid?> FindVanOwnerAsync(
+        Guid salesRepId,
+        CancellationToken cancellationToken);
+
+    /// <summary>
+    /// POST /api/stock/reservations/{id}/confirm — turns held stock into sold.
+    /// Used when a scheduled delivery order is confirmed (US-E4-2).
+    /// </summary>
+    Task<bool> ConfirmReservationAsync(
+        Guid reservationId,
+        CancellationToken cancellationToken);
+
     /// <summary>POST /api/stock/reservations/{id}/release — the saga's compensation.</summary>
     Task<bool> ReleaseReservationAsync(
         Guid reservationId,

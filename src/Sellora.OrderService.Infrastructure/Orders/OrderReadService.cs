@@ -35,6 +35,7 @@ public sealed class OrderReadService : IOrderReadService
                 order.ShopId,
                 order.SalesRepId,
                 order.AgencyId,
+                order.FulfilmentType.ToString(),
                 order.Status.ToString(),
                 order.OrderDate,
                 order.Total,

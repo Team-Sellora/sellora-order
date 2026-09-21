@@ -144,6 +144,7 @@ public sealed class OrderCreationService : IOrderCreationService
                 shop.AgencyId,
                 shop.TerritoryId,
                 shop.ProvinceId,
+                request.FulfilmentType,
                 reference,
                 orderDate,
                 priced);
@@ -167,9 +168,33 @@ public sealed class OrderCreationService : IOrderCreationService
                 VerificationStep.CreditLimit,
                 $"{exposure:N2} of {shop.CreditLimit:N2} credit used after this order.");
 
-            // ---- Step 4: resolve fulfilment source and reserve stock ------
-            var attempt = await _inventory.ResolveFulfilmentAsync(
-                reference, shop.AgencyId, request.Lines, cancellationToken);
+            // ---- Step 4: reserve stock, from the right source ------------
+            // A cash sale hands goods over there and then, so it can only be
+            // served from the rep's own van. Inventory's fulfilment resolver
+            // only ever picks agency or company stock, so the two paths use
+            // different endpoints rather than the same one with a check after.
+            StockReservationAttempt attempt;
+
+            if (request.FulfilmentType == OrderFulfilmentType.ImmediateCashSale)
+            {
+                var vanOwnerId = await _inventory.FindVanOwnerAsync(salesRepId, cancellationToken);
+
+                if (vanOwnerId is null)
+                {
+                    return saga.Fail(
+                        VerificationStep.StockReservation,
+                        "An immediate cash sale hands the goods over from your van, but you have " +
+                        "no van stock recorded. Choose scheduled delivery instead.");
+                }
+
+                attempt = await _inventory.ReserveAsync(
+                    reference, vanOwnerId.Value, request.Lines, cancellationToken);
+            }
+            else
+            {
+                attempt = await _inventory.ResolveFulfilmentAsync(
+                    reference, shop.AgencyId, request.Lines, cancellationToken);
+            }
 
             switch (attempt.Status)
             {
@@ -183,11 +208,15 @@ public sealed class OrderCreationService : IOrderCreationService
                             shortage.RequestedQuantity - shortage.AvailableQuantity))
                         .ToList();
 
+                    var where = request.FulfilmentType == OrderFulfilmentType.ImmediateCashSale
+                        ? " Your van is short — scheduled delivery can source this from the agency."
+                        : string.Empty;
+
                     return saga.Fail(
                         VerificationStep.StockReservation,
                         string.Join(" ", shortages.Select(shortage =>
                             $"{shortage.ProductName ?? shortage.ProductId.ToString()}: requested {shortage.RequestedQuantity}, " +
-                            $"only {shortage.AvailableQuantity} available (short by {shortage.ShortBy}).")),
+                            $"only {shortage.AvailableQuantity} available (short by {shortage.ShortBy}).")) + where,
                         shortages: shortages);
 
                 case StockReservationStatus.Rejected:
@@ -199,7 +228,9 @@ public sealed class OrderCreationService : IOrderCreationService
             reservation = attempt.Reservation!;
             saga.Pass(
                 VerificationStep.StockReservation,
-                $"Reservation {reservation.ReservationId} holds the stock until {reservation.ExpiresAt:u}.");
+                $"Reservation {reservation.ReservationId} holds " +
+                (request.FulfilmentType == OrderFulfilmentType.ImmediateCashSale ? "van" : "agency") +
+                $" stock until {reservation.ExpiresAt:u}.");
 
             // ---- Accept: persist the order and its recorded outcomes ------
             order.CompleteVerification(
@@ -212,8 +243,22 @@ public sealed class OrderCreationService : IOrderCreationService
             await _db.SaveChangesAsync(cancellationToken);
 
             _logger.LogInformation(
-                "Order {OrderReference} ({OrderId}) accepted for shop {ShopId} by rep {SalesRepId}; reservation {ReservationId}",
-                order.OrderReference, order.OrderId, order.ShopId, salesRepId, reservation.ReservationId);
+                "Order {OrderReference} ({OrderId}) accepted for shop {ShopId} by rep {SalesRepId} as {FulfilmentType} in status {Status}; reservation {ReservationId}",
+                order.OrderReference, order.OrderId, order.ShopId, salesRepId,
+                order.FulfilmentType, order.Status, reservation.ReservationId);
+
+            // A scheduled delivery is done being verified, so its stock is
+            // sold now. A cash sale keeps the stock merely held until the rep
+            // checks in and takes payment (US-E4-3).
+            if (order.FulfilmentType == OrderFulfilmentType.ScheduledDelivery &&
+                !await _inventory.ConfirmReservationAsync(reservation.ReservationId, CancellationToken.None))
+            {
+                // The order stands; the stock is still held rather than sold,
+                // so nothing is oversold. Needs an operator to reconcile.
+                _logger.LogError(
+                    "Order {OrderReference} is Confirmed but reservation {ReservationId} could not be confirmed; stock is still held",
+                    order.OrderReference, reservation.ReservationId);
+            }
 
             return CreateOrderResult.Created(OrderResponse.From(order));
         }
@@ -321,12 +366,12 @@ public sealed class OrderCreationService : IOrderCreationService
 
     /// <summary>
     /// The shop's current credit exposure: the total of its orders that are
-    /// not yet paid. Until payment recording (US-E4-3) exists, every
-    /// submitted order counts as unpaid.
+    /// not yet paid. Until payment recording (US-E4-3) exists, every order
+    /// that is not cancelled counts as unpaid.
     /// </summary>
     private Task<decimal> OutstandingBalanceAsync(Guid shopId, CancellationToken cancellationToken) =>
         _db.Orders
-            .Where(order => order.ShopId == shopId && order.Status == OrderStatus.Submitted)
+            .Where(order => order.ShopId == shopId && OrderStatuses.Outstanding.Contains(order.Status))
             .SumAsync(order => order.Total, cancellationToken);
 
     private async Task<string> NewUniqueReferenceAsync(DateTimeOffset orderDate, CancellationToken cancellationToken)
