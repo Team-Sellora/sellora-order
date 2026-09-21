@@ -135,6 +135,38 @@ public sealed class DependencyClientTests
         Assert.Equal(reservationId, attempt.Reservation!.ReservationId);
     }
 
+    [Fact]
+    public async Task Van_owner_is_found_by_rep_id_among_the_inventory_owners()
+    {
+        var repId = Guid.NewGuid();
+        var vanOwnerId = Guid.NewGuid();
+        var handler = StubHttpHandler.Json(HttpStatusCode.OK, $$"""
+            [ { "inventoryOwnerId": "{{Guid.NewGuid()}}", "ownerType": "Agency",
+                "externalOwnerId": "{{Guid.NewGuid()}}", "displayName": "Colombo Distribution Agency" },
+              { "inventoryOwnerId": "{{vanOwnerId}}", "ownerType": "SalesRep",
+                "externalOwnerId": "{{repId}}", "displayName": "Ruwan Dias" } ]
+            """);
+        var client = new InventoryClient(Http(handler), NullLogger<InventoryClient>.Instance);
+
+        Assert.Equal(vanOwnerId, await client.FindVanOwnerAsync(repId, CancellationToken.None));
+        Assert.Null(await client.FindVanOwnerAsync(Guid.NewGuid(), CancellationToken.None));
+        Assert.Equal("/api/inventory-owners", handler.Requests[0].Request.RequestUri!.AbsolutePath);
+    }
+
+    [Theory]
+    [InlineData(HttpStatusCode.OK, true)]
+    [InlineData(HttpStatusCode.Conflict, false)]
+    public async Task Confirm_reports_whether_the_reservation_became_a_sale(HttpStatusCode status, bool expected)
+    {
+        var handler = StubHttpHandler.Json(status, """{ "message": "x" }""");
+        var client = new InventoryClient(Http(handler), NullLogger<InventoryClient>.Instance);
+        var reservationId = Guid.NewGuid();
+
+        Assert.Equal(expected, await client.ConfirmReservationAsync(reservationId, CancellationToken.None));
+        Assert.Equal($"/api/stock/reservations/{reservationId}/confirm",
+            handler.Requests.Single().Request.RequestUri!.AbsolutePath);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.OK, true)]
     [InlineData(HttpStatusCode.Conflict, true)]
