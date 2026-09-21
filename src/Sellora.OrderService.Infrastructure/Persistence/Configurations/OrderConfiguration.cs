@@ -27,6 +27,12 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(order => order.TerritoryId).HasColumnName("territory_id").HasColumnType("uuid").IsRequired();
         builder.Property(order => order.ProvinceId).HasColumnName("province_id").HasColumnType("uuid").IsRequired();
 
+        builder.Property(order => order.FulfilmentType)
+            .HasColumnName("fulfilment_type")
+            .HasConversion<string>()
+            .HasMaxLength(30)
+            .IsRequired();
+
         builder.Property(order => order.Status)
             .HasColumnName("status")
             .HasConversion<string>()
@@ -85,6 +91,10 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
             .HasDatabaseName("ix_customer_order_company_province_date");
         builder.HasIndex(order => new { order.CompanyId, order.ShopId, order.OrderDate })
             .HasDatabaseName("ix_customer_order_company_shop_date");
+
+        // The credit check sums a shop's outstanding orders by status.
+        builder.HasIndex(order => new { order.CompanyId, order.ShopId, order.Status })
+            .HasDatabaseName("ix_customer_order_company_shop_status");
     }
 }
 

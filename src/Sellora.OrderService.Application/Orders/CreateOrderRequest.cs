@@ -9,4 +9,5 @@ namespace Sellora.OrderService.Application.Orders;
 /// </summary>
 public sealed record CreateOrderRequest(
     Guid ShopId,
+    OrderFulfilmentType FulfilmentType,
     IReadOnlyCollection<BasketLine> Lines);

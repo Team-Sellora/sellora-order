@@ -9,6 +9,9 @@ public sealed class CreateOrderRequestBody
 {
     public Guid ShopId { get; init; }
 
+    /// <summary>"ImmediateCashSale" or "ScheduledDelivery" (US-E4-2).</summary>
+    public string? FulfilmentType { get; init; }
+
     public IReadOnlyList<CreateOrderLineRequestBody>? Lines { get; init; }
 }
 
