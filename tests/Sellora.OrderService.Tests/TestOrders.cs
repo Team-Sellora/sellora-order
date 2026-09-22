@@ -28,7 +28,8 @@ internal static class TestOrders
         var now = DateTimeOffset.UtcNow;
         var order = Order.Create(
             companyId, placement.ShopId, repId, placement.AgencyId, placement.TerritoryId,
-            placement.ProvinceId, reference ?? OrderReferenceGenerator.Generate(now), now,
+            placement.ProvinceId, OrderFulfilmentType.ScheduledDelivery,
+            reference ?? OrderReferenceGenerator.Generate(now), now,
             new[] { new NewOrderLine(Guid.NewGuid(), "Sunlight Soap 100g", 2, unitPrice) });
 
         order.CompleteVerification(Guid.NewGuid(), Guid.NewGuid(), AllPassed, now);

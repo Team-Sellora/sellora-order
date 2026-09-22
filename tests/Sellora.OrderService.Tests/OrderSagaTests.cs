@@ -28,7 +28,12 @@ public sealed class OrderSagaTests
             _place.ShopId, "Perera Stores", 10_000m, _place.TerritoryId, _place.AgencyId, _place.ProvinceId);
     }
 
-    private async Task<CreateOrderResult> SubmitAsync(params BasketLine[] lines)
+    private Task<CreateOrderResult> SubmitAsync(params BasketLine[] lines) =>
+        SubmitAsync(OrderFulfilmentType.ScheduledDelivery, lines);
+
+    private async Task<CreateOrderResult> SubmitAsync(
+        OrderFulfilmentType fulfilmentType,
+        params BasketLine[] lines)
     {
         await using var db = _fixture.CreateContext(_companyId);
         var service = new OrderCreationService(
@@ -41,7 +46,8 @@ public sealed class OrderSagaTests
             TimeProvider.System,
             NullLogger<OrderCreationService>.Instance);
 
-        return await service.CreateAsync(new CreateOrderRequest(_place.ShopId, lines), CancellationToken.None);
+        return await service.CreateAsync(
+            new CreateOrderRequest(_place.ShopId, fulfilmentType, lines), CancellationToken.None);
     }
 
     private async Task<int> OrderCountAsync()
@@ -63,6 +69,7 @@ public sealed class OrderSagaTests
         Assert.Equal(2661.50m, order.Total);
         Assert.Equal(_inventory.LastReservationId, order.ReservationId);
         Assert.Equal(_place.AgencyId, order.AgencyId);
+        Assert.Equal("ScheduledDelivery", order.FulfilmentType);
         Assert.Equal(
             new[] { "RepShopRelationship", "PriceResolution", "CreditLimit", "StockReservation" },
             order.VerificationSteps.Select(step => step.Step));
@@ -195,6 +202,83 @@ public sealed class OrderSagaTests
         Assert.Equal("StockReservation", result.Rejection!.FailedStep);
         Assert.Contains("403", result.Rejection.Reason);
         Assert.Equal(0, await OrderCountAsync());
+    }
+
+    [Fact]
+    public async Task Scheduled_delivery_is_confirmed_and_its_stock_is_sold()
+    {
+        var soap = _catalog.Add("Soap", 100m);
+
+        var result = await SubmitAsync(OrderFulfilmentType.ScheduledDelivery, new BasketLine(soap.ProductId, 2));
+
+        Assert.Equal(CreateOrderOutcome.Created, result.Outcome);
+        Assert.Equal("ScheduledDelivery", result.Order!.FulfilmentType);
+        Assert.Equal("Confirmed", result.Order.Status);
+        // Agency stock, and the reservation is turned into a sale now.
+        Assert.Equal(new[] { _inventory.LastReservationId!.Value }, _inventory.Confirmed);
+        Assert.Null(_inventory.LastReservedOwnerId);
+    }
+
+    [Fact]
+    public async Task Immediate_cash_sale_reserves_van_stock_and_waits_for_checkout()
+    {
+        var soap = _catalog.Add("Soap", 100m);
+        var vanOwnerId = Guid.NewGuid();
+        _inventory.VanOwnerId = vanOwnerId;
+
+        var result = await SubmitAsync(OrderFulfilmentType.ImmediateCashSale, new BasketLine(soap.ProductId, 2));
+
+        Assert.Equal(CreateOrderOutcome.Created, result.Outcome);
+        Assert.Equal("ImmediateCashSale", result.Order!.FulfilmentType);
+        Assert.Equal("AwaitingCheckout", result.Order.Status);
+        Assert.Equal(vanOwnerId, _inventory.LastReservedOwnerId);
+        // The stock stays held until the rep checks in and takes payment.
+        Assert.Empty(_inventory.Confirmed);
+    }
+
+    [Fact]
+    public async Task Cash_sale_without_van_stock_is_rejected_and_offered_scheduled_delivery()
+    {
+        var soap = _catalog.Add("Soap", 100m);
+        _inventory.VanOwnerId = null;
+
+        var result = await SubmitAsync(OrderFulfilmentType.ImmediateCashSale, new BasketLine(soap.ProductId, 1));
+
+        Assert.Equal(CreateOrderOutcome.VerificationFailed, result.Outcome);
+        Assert.Equal("StockReservation", result.Rejection!.FailedStep);
+        Assert.Contains("no van stock", result.Rejection.Reason);
+        Assert.Contains("scheduled delivery", result.Rejection.Reason);
+        Assert.Equal(0, _inventory.ReserveCalls);
+        Assert.Equal(0, await OrderCountAsync());
+    }
+
+    [Fact]
+    public async Task Cash_sale_short_on_van_stock_points_at_scheduled_delivery()
+    {
+        var soap = _catalog.Add("Soap", 100m);
+        _inventory.VanOwnerId = Guid.NewGuid();
+        _inventory.Mode = StockReservationStatus.InsufficientStock;
+        _inventory.Shortages = new[] { new ReservationShortage(soap.ProductId, null, 10, 3) };
+
+        var result = await SubmitAsync(OrderFulfilmentType.ImmediateCashSale, new BasketLine(soap.ProductId, 10));
+
+        Assert.Contains("short by 7", result.Rejection!.Reason);
+        Assert.Contains("Your van is short", result.Rejection.Reason);
+        Assert.Equal(0, await OrderCountAsync());
+    }
+
+    [Fact]
+    public async Task A_confirmed_order_keeps_its_reservation_even_if_confirmation_fails()
+    {
+        var soap = _catalog.Add("Soap", 100m);
+        _inventory.ConfirmSucceeds = false;
+
+        var result = await SubmitAsync(OrderFulfilmentType.ScheduledDelivery, new BasketLine(soap.ProductId, 1));
+
+        // The order is valid and recorded; the stock is held, never oversold.
+        Assert.Equal(CreateOrderOutcome.Created, result.Outcome);
+        Assert.Equal(1, await OrderCountAsync());
+        Assert.Empty(_inventory.Released);
     }
 
     [Fact]

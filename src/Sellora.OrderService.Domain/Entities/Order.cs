@@ -37,6 +37,12 @@ public sealed class Order : ITenantScoped
     // Needed so an Area Manager can be scoped to their provinces (T4).
     public Guid ProvinceId { get; private set; }
 
+    public OrderFulfilmentType FulfilmentType { get; private set; }
+
+    /// <summary>
+    /// Decided by <see cref="FulfilmentType"/> at creation; there is no
+    /// setter and no route that changes either value afterwards.
+    /// </summary>
     public OrderStatus Status { get; private set; }
 
     public DateTimeOffset OrderDate { get; private set; }
@@ -64,6 +70,7 @@ public sealed class Order : ITenantScoped
         Guid agencyId,
         Guid territoryId,
         Guid provinceId,
+        OrderFulfilmentType fulfilmentType,
         string orderReference,
         DateTimeOffset orderDate,
         IReadOnlyCollection<NewOrderLine>? lines)
@@ -74,6 +81,12 @@ public sealed class Order : ITenantScoped
         RequireId(agencyId, "agencyId");
         RequireId(territoryId, "territoryId");
         RequireId(provinceId, "provinceId");
+
+        if (!Enum.IsDefined(fulfilmentType))
+        {
+            throw new OrderRuleViolationException(
+                "fulfilmentType must be ImmediateCashSale or ScheduledDelivery.");
+        }
 
         if (string.IsNullOrWhiteSpace(orderReference))
         {
@@ -92,7 +105,12 @@ public sealed class Order : ITenantScoped
             AgencyId = agencyId,
             TerritoryId = territoryId,
             ProvinceId = provinceId,
-            Status = OrderStatus.Submitted,
+            FulfilmentType = fulfilmentType,
+            // A cash sale still owes a payment at the counter; a scheduled
+            // delivery is a real order the moment it is verified.
+            Status = fulfilmentType == OrderFulfilmentType.ImmediateCashSale
+                ? OrderStatus.AwaitingCheckout
+                : OrderStatus.Confirmed,
             OrderDate = orderDate,
             OrderReference = orderReference
         };

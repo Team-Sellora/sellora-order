@@ -7,8 +7,8 @@ public sealed class OrderTests
 {
     private static Order CreateWith(params NewOrderLine[] lines) => Order.Create(
         Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-        Guid.NewGuid(), Guid.NewGuid(), "ORD-260918-ABCDEF",
-        DateTimeOffset.UtcNow, lines);
+        Guid.NewGuid(), Guid.NewGuid(), OrderFulfilmentType.ScheduledDelivery,
+        "ORD-260918-ABCDEF", DateTimeOffset.UtcNow, lines);
 
     private static NewOrderLine Line(int quantity = 1, decimal price = 10m, Guid? productId = null, string name = "Soap") =>
         new(productId ?? Guid.NewGuid(), name, quantity, price);
@@ -21,7 +21,7 @@ public sealed class OrderTests
         Assert.Equal(361.50m, order.Lines.Single(l => l.Quantity == 3).LineTotal);
         Assert.Equal(2661.50m, order.Subtotal);
         Assert.Equal(order.Subtotal, order.Total);
-        Assert.Equal(OrderStatus.Submitted, order.Status);
+        Assert.Equal(OrderStatus.Confirmed, order.Status);
     }
 
     [Fact]
@@ -87,7 +87,8 @@ public sealed class OrderTests
     {
         Assert.Throws<OrderRuleViolationException>(() => Order.Create(
             Guid.NewGuid(), Guid.Empty, Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
-            Guid.NewGuid(), "ORD-260918-ABCDEF", DateTimeOffset.UtcNow, new[] { Line() }));
+            Guid.NewGuid(), OrderFulfilmentType.ScheduledDelivery, "ORD-260918-ABCDEF",
+            DateTimeOffset.UtcNow, new[] { Line() }));
     }
 
     [Fact]
@@ -131,5 +132,37 @@ public sealed class OrderTests
             order.CompleteVerification(Guid.NewGuid(), Guid.NewGuid(), steps, DateTimeOffset.UtcNow));
         Assert.Throws<OrderRuleViolationException>(() =>
             order.CompleteVerification(Guid.NewGuid(), Guid.NewGuid(), steps.Take(3).ToArray(), DateTimeOffset.UtcNow));
+    }
+
+    [Theory]
+    [InlineData(OrderFulfilmentType.ImmediateCashSale, OrderStatus.AwaitingCheckout)]
+    [InlineData(OrderFulfilmentType.ScheduledDelivery, OrderStatus.Confirmed)]
+    public void Fulfilment_type_decides_the_starting_status(
+        OrderFulfilmentType fulfilmentType, OrderStatus expected)
+    {
+        var order = Order.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(), fulfilmentType, "ORD-260918-ABCDEF", DateTimeOffset.UtcNow,
+            new[] { Line() });
+
+        Assert.Equal(fulfilmentType, order.FulfilmentType);
+        Assert.Equal(expected, order.Status);
+    }
+
+    [Fact]
+    public void Fulfilment_type_must_be_a_known_value()
+    {
+        Assert.Throws<OrderRuleViolationException>(() => Order.Create(
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            Guid.NewGuid(), (OrderFulfilmentType)99, "ORD-260918-ABCDEF", DateTimeOffset.UtcNow,
+            new[] { Line() }));
+    }
+
+    [Fact]
+    public void Fulfilment_type_and_status_have_no_public_setter()
+    {
+        // US-E4-2-Q3: nothing outside the aggregate can change the routing.
+        Assert.False(typeof(Order).GetProperty(nameof(Order.FulfilmentType))!.SetMethod!.IsPublic);
+        Assert.False(typeof(Order).GetProperty(nameof(Order.Status))!.SetMethod!.IsPublic);
     }
 }

@@ -39,8 +39,19 @@ public sealed class OrdersController : ControllerBase
         CreateOrderRequestBody body,
         CancellationToken cancellationToken)
     {
+        // Parsed here so a typo is a clear 400, not a silent default.
+        if (!Enum.TryParse<OrderFulfilmentType>(body.FulfilmentType, ignoreCase: true, out var fulfilmentType) ||
+            !Enum.IsDefined(fulfilmentType))
+        {
+            return ProblemResult(
+                StatusCodes.Status400BadRequest,
+                "Invalid order",
+                "fulfilmentType is required and must be ImmediateCashSale or ScheduledDelivery.");
+        }
+
         var request = new CreateOrderRequest(
             body.ShopId,
+            fulfilmentType,
             (body.Lines ?? Array.Empty<CreateOrderLineRequestBody>())
                 .Select(line => new BasketLine(line.ProductId, line.Quantity))
                 .ToList());

@@ -51,6 +51,10 @@ internal sealed class FakeInventory : IInventoryClient
     public IReadOnlyCollection<ReservationShortage> Shortages { get; set; } = Array.Empty<ReservationShortage>();
     public bool Unavailable { get; set; }
     public Func<string, Task>? OnReserved { get; set; }
+    public Guid? VanOwnerId { get; set; }
+    public List<Guid> Confirmed { get; } = new();
+    public bool ConfirmSucceeds { get; set; } = true;
+    public Guid? LastReservedOwnerId { get; private set; }
     public int ReserveCalls { get; private set; }
     public List<Guid> Released { get; } = new();
     public Guid? LastReservationId { get; private set; }
@@ -81,8 +85,23 @@ internal sealed class FakeInventory : IInventoryClient
     }
 
     public Task<StockReservationAttempt> ReserveAsync(
-        string orderReference, Guid inventoryOwnerId, IReadOnlyCollection<BasketLine> lines, CancellationToken cancellationToken) =>
-        ResolveFulfilmentAsync(orderReference, Guid.Empty, lines, cancellationToken);
+        string orderReference, Guid inventoryOwnerId, IReadOnlyCollection<BasketLine> lines, CancellationToken cancellationToken)
+    {
+        LastReservedOwnerId = inventoryOwnerId;
+        return ResolveFulfilmentAsync(orderReference, Guid.Empty, lines, cancellationToken);
+    }
+
+    public Task<Guid?> FindVanOwnerAsync(Guid salesRepId, CancellationToken cancellationToken)
+    {
+        if (Unavailable) throw new DependencyUnavailableException(Dependency.Inventory);
+        return Task.FromResult(VanOwnerId);
+    }
+
+    public Task<bool> ConfirmReservationAsync(Guid reservationId, CancellationToken cancellationToken)
+    {
+        Confirmed.Add(reservationId);
+        return Task.FromResult(ConfirmSucceeds);
+    }
 
     public Task<bool> ReleaseReservationAsync(Guid reservationId, CancellationToken cancellationToken)
     {

@@ -55,3 +55,10 @@ public sealed record ShopPlacement(
     Guid TerritoryId,
     Guid AgencyId,
     Guid ProvinceId);
+
+/// <summary>sellora-inventory: Application/Stock/InventoryOwnerResponse.cs</summary>
+public sealed record InventoryOwnerResponse(
+    Guid InventoryOwnerId,
+    string OwnerType,
+    Guid ExternalOwnerId,
+    string DisplayName);

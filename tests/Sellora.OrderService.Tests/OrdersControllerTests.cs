@@ -9,6 +9,30 @@ namespace Sellora.OrderService.Tests;
 
 public sealed class OrdersControllerTests
 {
+    private static readonly CreateOrderRequestBody ValidBody = new()
+    {
+        ShopId = Guid.NewGuid(),
+        FulfilmentType = "ScheduledDelivery",
+        Lines = new[] { new CreateOrderLineRequestBody { ProductId = Guid.NewGuid(), Quantity = 1 } }
+    };
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Whenever")]
+    public async Task Unknown_fulfilment_type_is_a_400(string? fulfilmentType)
+    {
+        var controller = Controller(CreateOrderResult.Created(null!));
+
+        var result = await controller.Create(
+            new CreateOrderRequestBody { ShopId = Guid.NewGuid(), FulfilmentType = fulfilmentType },
+            CancellationToken.None);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, objectResult.StatusCode);
+        Assert.Contains("ImmediateCashSale", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
+    }
+
     private static OrdersController Controller(CreateOrderResult result) => new(new CreationSpy(result), null!)
     {
         ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
@@ -24,7 +48,7 @@ public sealed class OrdersControllerTests
             Shortages: new[] { new StockShortage(Guid.NewGuid(), "Soap", 10, 4, 6) });
 
         var result = await Controller(CreateOrderResult.Rejected(CreateOrderOutcome.VerificationFailed, rejection))
-            .Create(new CreateOrderRequestBody(), CancellationToken.None);
+            .Create(ValidBody, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(422, objectResult.StatusCode);
@@ -44,7 +68,7 @@ public sealed class OrdersControllerTests
             Dependency: "Inventory");
         var controller = Controller(CreateOrderResult.Rejected(CreateOrderOutcome.DependencyUnavailable, rejection));
 
-        var result = await controller.Create(new CreateOrderRequestBody(), CancellationToken.None);
+        var result = await controller.Create(ValidBody, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(503, objectResult.StatusCode);
@@ -91,7 +115,7 @@ public sealed class OrdersControllerTests
         var controller = new OrdersController(
             new CreationSpy(CreateOrderResult.Failed(outcome, "specific reason")), null!);
 
-        var result = await controller.Create(new CreateOrderRequestBody(), CancellationToken.None);
+        var result = await controller.Create(ValidBody, CancellationToken.None);
 
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(status, objectResult.StatusCode);
@@ -102,12 +126,13 @@ public sealed class OrdersControllerTests
     public async Task Success_returns_201_pointing_at_the_detail_route()
     {
         var order = new OrderResponse(Guid.NewGuid(), "ORD-260918-ABCDEF", Guid.NewGuid(), Guid.NewGuid(),
-            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "Submitted", DateTimeOffset.UtcNow, 10m, 10m,
+            Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), "ScheduledDelivery", "Confirmed",
+            DateTimeOffset.UtcNow, 10m, 10m,
             Guid.NewGuid(), Array.Empty<OrderLineResponse>(), Array.Empty<OrderVerificationStepResponse>());
 
         var controller = new OrdersController(new CreationSpy(CreateOrderResult.Created(order)), null!);
 
-        var result = await controller.Create(new CreateOrderRequestBody(), CancellationToken.None);
+        var result = await controller.Create(ValidBody, CancellationToken.None);
 
         var created = Assert.IsType<CreatedAtActionResult>(result);
         Assert.Equal(nameof(OrdersController.GetById), created.ActionName);
