@@ -60,13 +60,17 @@ jobs:
           --health-retries 12
           --health-start-period 15s
 
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Setup .NET
+      - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.403
@@ -77,9 +81,26 @@ jobs:
           java-version: 17
           distribution: zulu
 
+      - name: Cache SonarQube Cloud packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Cache SonarQube Cloud scanner
+        id: cache-sonar-scanner
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/scanner
+          key: ${{ runner.os }}-sonar-scanner
+          restore-keys: ${{ runner.os }}-sonar-scanner
+
       - name: Install SonarScanner
+        if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
         run: |
-          dotnet tool install dotnet-sonarscanner \
+          mkdir -p ${{ runner.temp }}/scanner
+          dotnet tool update dotnet-sonarscanner \
             --tool-path "${{ runner.temp }}/scanner"
 
       - name: Restore dependencies
@@ -100,6 +121,23 @@ jobs:
           dotnet build "${{ inputs.solution-path }}" \
             --configuration Release \
             --no-restore
+
+      - name: Wait for Kafka broker
+        run: |
+          CONTAINER_ID="${{ job.services.kafka.id }}"
+          for attempt in $(seq 1 60); do
+            if docker exec "${CONTAINER_ID}" \
+                /opt/kafka/bin/kafka-broker-api-versions.sh \
+                --bootstrap-server localhost:9092 >/dev/null 2>&1; then
+              echo "Kafka broker is ready"
+              exit 0
+            fi
+            echo "Waiting for Kafka broker (${attempt}/60)..."
+            sleep 2
+          done
+          echo "Kafka broker did not become ready in time"
+          docker logs "${CONTAINER_ID}" || true
+          exit 1
 
       - name: Run tests with coverage
         run: |
@@ -126,10 +164,22 @@ jobs:
           path: ./TestResults
 
       - name: Build Docker image
-        run: docker build -t sellora-order:ci .
+        run: |
+          OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE_TAG="ghcr.io/${OWNER_LC}/sellora-order:${{ github.sha }}"
+          docker build -t "$IMAGE_TAG" -t "sellora-order:ci" .
+          echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
       - name: Verify health with unreachable dependencies
         run: |
+          set -euo pipefail
+
+          cleanup() {
+            docker logs sellora-order-ci 2>&1 || true
+            docker rm -f sellora-order-ci 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
           docker run -d --name sellora-order-ci \
             --network host \
             -e ASPNETCORE_ENVIRONMENT=Container \
@@ -148,16 +198,11 @@ jobs:
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8099/health || echo "000")
             if [ "$STATUS" = "200" ]; then
               echo "/health returned 200"
-              break
+              exit 0
             fi
+            echo "Attempt $i -> /health=${STATUS}"
             sleep 2
           done
 
-          if [ "$STATUS" != "200" ]; then
-            docker logs sellora-order-ci
-            exit 1
-          fi
-
-      - name: Remove health-check container
-        if: always()
-        run: docker rm -f sellora-order-ci || true
+          echo "Health check failed after 15 attempts"
+          exit 1

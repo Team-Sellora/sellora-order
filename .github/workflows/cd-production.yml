@@ -1,18 +1,18 @@
-name: CD - Deploy Staging
+name: CD - Deploy Production
 
 on:
   push:
     branches:
-      - dev
+      - main
 
 permissions:
   contents: read
 
 jobs:
-  deploy-staging:
-    name: Deploy to Azure staging
+  deploy-production:
+    name: Deploy to Azure production
     runs-on: ubuntu-latest
-    environment: staging
+    environment: production
 
     steps:
       - name: Checkout repository
@@ -32,21 +32,21 @@ jobs:
 
           docker build \
             -t "${IMAGE}:${{ github.sha }}" \
-            -t "${IMAGE}:staging" \
+            -t "${IMAGE}:latest" \
             .
 
           docker push "${IMAGE}:${{ github.sha }}"
-          docker push "${IMAGE}:staging"
+          docker push "${IMAGE}:latest"
 
       - name: Wait for Azure to pull and deploy new image
         run: |
-          echo "Waiting 60s for Azure Deployment Center to pull the new :staging image..."
-          sleep 60
+          echo "Waiting 90s for Azure Deployment Center to pull the new :latest image..."
+          sleep 90
 
-      - name: Validate deployed app startup
+      - name: Validate deployed production startup
         shell: bash
         env:
-          BASE_URL: ${{ secrets.STAGING_BASE_URL }}
+          BASE_URL: ${{ secrets.PRODUCTION_BASE_URL }}
         run: |
           set -euo pipefail
 
@@ -69,7 +69,7 @@ jobs:
               "$WHOAMI_URL" || true)
 
             if [ "$HEALTH_STATUS" = "200" ] && { [ "$WHOAMI_STATUS" = "200" ] || [ "$WHOAMI_STATUS" = "401" ]; }; then
-              echo "Startup validation passed: /health=200 and /whoami responded with ${WHOAMI_STATUS}"
+              echo "Production startup validation passed: /health=200 and /whoami responded with ${WHOAMI_STATUS}"
               exit 0
             fi
 
@@ -77,5 +77,5 @@ jobs:
             sleep 15
           done
 
-          echo "Deployment validation failed: app did not start with expected runtime configuration"
+          echo "Production deployment validation failed: app did not start with expected runtime configuration"
           exit 1
