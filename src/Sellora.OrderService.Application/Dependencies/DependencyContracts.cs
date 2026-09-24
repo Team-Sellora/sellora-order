@@ -46,7 +46,8 @@ public sealed record ReservationShortage(
 
 /// <summary>
 /// The shop details Order needs from Organization's GET /api/hierarchy:
-/// its credit limit and where it sits in the hierarchy.
+/// its credit limit, where it sits in the hierarchy, and its registered
+/// coordinates for the GPS check-in gate (US-E4-3).
 /// </summary>
 public sealed record ShopPlacement(
     Guid ShopId,
@@ -54,7 +55,9 @@ public sealed record ShopPlacement(
     decimal CreditLimit,
     Guid TerritoryId,
     Guid AgencyId,
-    Guid ProvinceId);
+    Guid ProvinceId,
+    decimal Latitude,
+    decimal Longitude);
 
 /// <summary>sellora-inventory: Application/Stock/InventoryOwnerResponse.cs</summary>
 public sealed record InventoryOwnerResponse(

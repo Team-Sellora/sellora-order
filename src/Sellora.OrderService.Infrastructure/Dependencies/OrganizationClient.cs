@@ -76,7 +76,9 @@ public sealed class OrganizationClient : IOrganizationClient
                 shop.CreditLimit,
                 territory.TerritoryId,
                 agency.AgencyId,
-                province.ProvinceId))
+                province.ProvinceId,
+                shop.Latitude,
+                shop.Longitude))
             .FirstOrDefault();
     }
 
