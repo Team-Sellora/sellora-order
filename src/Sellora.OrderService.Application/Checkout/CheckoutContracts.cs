@@ -56,13 +56,14 @@ public sealed record CheckInResult(
     CheckInResponse? CheckIn,
     string? Message)
 {
+    /// <summary>Creates a new CheckInResult based on the provided CheckInResponse.</summary>
     public static CheckInResult From(CheckInResponse checkIn) => new(
         checkIn.Accepted ? CheckoutOutcome.Succeeded : CheckoutOutcome.OutsideRadius,
         checkIn,
         checkIn.Accepted
             ? null
             : FormattableString.Invariant(
-                $"You are {checkIn.DistanceMeters:N0} m from the shop; check-in is allowed within {checkIn.RadiusMeters:N0} m. Move closer and try again."));
+                $"You are {Math.Round(checkIn.DistanceMeters, MidpointRounding.AwayFromZero):N0} m from the shop; check-in is allowed within {Math.Round(checkIn.RadiusMeters, MidpointRounding.AwayFromZero):N0} m. Move closer and try again."));
 
     public static CheckInResult Failed(CheckoutOutcome outcome, string message) => new(outcome, null, message);
 }
