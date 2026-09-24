@@ -88,9 +88,11 @@ public sealed class DependencyClientTests
                 "unassignedTerritories": [],
                 "agencies": [{
                   "agencyId": "22222222-2222-2222-2222-222222222222", "name": "Colombo Agency",
+                  "email": "orders@colombo-agency.lk",
                   "territories": [{
                     "territoryId": "33333333-3333-3333-3333-333333333333", "code": "T1", "name": "Dehiwala",
-                    "shops": [{ "shopId": "{{shopId}}", "name": "Perera Stores", "ownerName": null,
+                    "shops": [{ "shopId": "{{shopId}}", "name": "Perera Stores", "ownerName": "Chaminda Perera",
+                                "ownerEmail": "owner@pererastores.lk",
                                 "address": "12 Galle Rd", "latitude": 6.85, "longitude": 79.86,
                                 "creditLimit": 250000.00 }]
                   }]
@@ -107,6 +109,33 @@ public sealed class DependencyClientTests
         Assert.Equal(79.86m, shop.Longitude);
         Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), shop.AgencyId);
         Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), shop.ProvinceId);
+
+        // US-E4-4: contact details snapshotted on the order for its events.
+        Assert.Equal("Chaminda Perera", shop.OwnerName);
+        Assert.Equal("owner@pererastores.lk", shop.OwnerEmail);
+        Assert.Equal("Colombo Agency", shop.AgencyName);
+        Assert.Equal("orders@colombo-agency.lk", shop.AgencyEmail);
+    }
+
+    [Fact]
+    public async Task Organization_hierarchy_without_emails_still_parses()
+    {
+        // An Organization deployed before US-E4-4 sends no email fields.
+        var shopId = Guid.NewGuid();
+        var handler = StubHttpHandler.Json(HttpStatusCode.OK, $$"""
+            { "companyId": "{{Guid.NewGuid()}}", "name": "Acme",
+              "provinces": [{ "provinceId": "{{Guid.NewGuid()}}", "code": "WP", "name": "Western", "unassignedTerritories": [],
+                "agencies": [{ "agencyId": "{{Guid.NewGuid()}}", "name": "A",
+                  "territories": [{ "territoryId": "{{Guid.NewGuid()}}", "code": "T1", "name": "T",
+                    "shops": [{ "shopId": "{{shopId}}", "name": "S", "ownerName": null, "address": "x",
+                                "latitude": 6.85, "longitude": 79.86, "creditLimit": 1 }] }] }] }] }
+            """);
+
+        var shop = await new OrganizationClient(Http(handler)).FindShopAsync(shopId, CancellationToken.None);
+
+        Assert.NotNull(shop);
+        Assert.Null(shop!.OwnerEmail);
+        Assert.Null(shop.AgencyEmail);
     }
 
     [Fact]

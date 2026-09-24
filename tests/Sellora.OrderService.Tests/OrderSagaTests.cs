@@ -6,6 +6,7 @@ using Sellora.OrderService.Application.Orders;
 using Sellora.OrderService.Domain.Entities;
 using Sellora.OrderService.Domain.Orders;
 using Sellora.OrderService.Infrastructure.Orders;
+using Sellora.OrderService.Infrastructure.Outbox;
 
 namespace Sellora.OrderService.Tests;
 
@@ -45,6 +46,7 @@ public sealed class OrderSagaTests
             _catalog,
             _inventory,
             TimeProvider.System,
+            new OrderEventOutbox(new EntityFrameworkOutboxWriter(db), new FixedCorrelation("saga-test-correlation")),
             NullLogger<OrderCreationService>.Instance);
 
         return await service.CreateAsync(

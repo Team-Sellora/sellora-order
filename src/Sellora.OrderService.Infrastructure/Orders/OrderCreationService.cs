@@ -1,3 +1,4 @@
+using Sellora.OrderService.Application.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Sellora.OrderService.Application.Dependencies;
@@ -29,6 +30,7 @@ public sealed class OrderCreationService : IOrderCreationService
     private readonly ICatalogClient _catalog;
     private readonly IInventoryClient _inventory;
     private readonly TimeProvider _clock;
+    private readonly IOrderEventOutbox _events;
     private readonly ILogger<OrderCreationService> _logger;
 
     public OrderCreationService(
@@ -39,8 +41,10 @@ public sealed class OrderCreationService : IOrderCreationService
         ICatalogClient catalog,
         IInventoryClient inventory,
         TimeProvider clock,
+        IOrderEventOutbox events,
         ILogger<OrderCreationService> logger)
     {
+        _events = events;
         _db = db;
         _tenant = tenant;
         _caller = caller;
@@ -233,11 +237,32 @@ public sealed class OrderCreationService : IOrderCreationService
                 $" stock until {reservation.ExpiresAt:u}.");
 
             // ---- Accept: persist the order and its recorded outcomes ------
+            var acceptedAt = _clock.GetUtcNow();
+
             order.CompleteVerification(
                 reservation.ReservationId,
                 reservation.InventoryOwnerId,
                 saga.Records,
-                _clock.GetUtcNow());
+                acceptedAt);
+
+            // US-E4-4: snapshot who the order is for, so its events can be
+            // emailed without calling Organization back.
+            order.RecordContacts(new OrderContacts(
+                shop.Name,
+                shop.OwnerName,
+                shop.OwnerEmail,
+                shop.AgencyName,
+                shop.AgencyEmail,
+                _caller.DisplayName));
+
+            // Same SaveChanges as the order: both commit or neither does, so
+            // an order can never exist without its events.
+            _events.OrderPlaced(order, acceptedAt);
+
+            if (order.Status == OrderStatus.Confirmed)
+            {
+                _events.OrderConfirmed(order, acceptedAt);
+            }
 
             _db.Orders.Add(order);
             await _db.SaveChangesAsync(cancellationToken);

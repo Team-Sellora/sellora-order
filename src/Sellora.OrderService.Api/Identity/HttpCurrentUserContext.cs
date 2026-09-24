@@ -28,4 +28,6 @@ public sealed class HttpCurrentUserContext(IHttpContextAccessor accessor)
     public Guid? ShopId => Scope.ShopId;
 
     public IReadOnlyCollection<Guid> ProvinceIds => Scope.ProvinceIds;
+
+    public string? DisplayName => Scope.DisplayName;
 }
