@@ -20,4 +20,7 @@ public interface ICurrentUserContext
     Guid? ShopId { get; }
 
     IReadOnlyCollection<Guid> ProvinceIds { get; }
+
+    /// <summary>The caller's display name from Organization, for order snapshots and events.</summary>
+    string? DisplayName { get; }
 }

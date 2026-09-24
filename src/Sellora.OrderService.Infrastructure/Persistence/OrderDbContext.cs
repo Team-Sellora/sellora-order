@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sellora.OrderService.Domain.Entities;
 using Sellora.OrderService.Domain.Tenancy;
+using Sellora.OrderService.Infrastructure.Persistence.Configurations;
 
 namespace Sellora.OrderService.Infrastructure.Persistence;
 
@@ -24,12 +25,23 @@ public class OrderDbContext : DbContext
 
     public DbSet<Payment> Payments => Set<Payment>();
 
+    /// <summary>
+    /// Events committed with the order change they describe (US-E4-4).
+    /// No tenant filter: the relay reads every tenant's rows, and nothing
+    /// else queries this table.
+    /// </summary>
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
 
         modelBuilder.ApplyConfigurationsFromAssembly(
             typeof(OrderDbContext).Assembly);
+
+        modelBuilder.HasSequence<long>(OutboxMessageConfiguration.SequenceName)
+            .StartsAt(1)
+            .IncrementsBy(1);
 
         // Company boundary: no tenant in the token means no rows.
         modelBuilder.Entity<Order>()

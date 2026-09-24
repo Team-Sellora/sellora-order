@@ -64,11 +64,13 @@ public static class DependencyRegistration
             ?? new DependencyOptions();
 
         services.AddTransient<ForwardBearerTokenHandler>();
+        services.AddTransient<ForwardCorrelationIdHandler>();
 
         services.AddHttpClient<IOrganizationClient, OrganizationClient>(client =>
                 client.BaseAddress = BaseAddress(options.Organization, "Organization"))
             .AddResilience("organization", options.Organization, options.CircuitBreaker)
-            .AddHttpMessageHandler<ForwardBearerTokenHandler>();
+            .AddHttpMessageHandler<ForwardBearerTokenHandler>()
+            .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
 
         // Catalog's /internal routes take a shared key, not the user's token.
         services.AddHttpClient<ICatalogClient, CatalogClient>(client =>
@@ -81,12 +83,14 @@ public static class DependencyRegistration
                         CatalogClient.InternalApiKeyHeader, options.Catalog.InternalApiKey);
                 }
             })
-            .AddResilience("catalog", options.Catalog, options.CircuitBreaker);
+            .AddResilience("catalog", options.Catalog, options.CircuitBreaker)
+            .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
 
         services.AddHttpClient<IInventoryClient, InventoryClient>(client =>
                 client.BaseAddress = BaseAddress(options.Inventory, "Inventory"))
             .AddResilience("inventory", options.Inventory, options.CircuitBreaker)
-            .AddHttpMessageHandler<ForwardBearerTokenHandler>();
+            .AddHttpMessageHandler<ForwardBearerTokenHandler>()
+            .AddHttpMessageHandler<ForwardCorrelationIdHandler>();
 
         return services;
     }

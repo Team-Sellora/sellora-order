@@ -41,14 +41,16 @@ public sealed class OrganizationClient : IOrganizationClient
             scope.SalesRepId,
             scope.AgencyId,
             scope.ShopId,
-            scope.ProvinceIds ?? new List<Guid>());
+            scope.ProvinceIds ?? new List<Guid>(),
+            scope.DisplayName);
     }
 
     private sealed record CallerScopeDto(
         Guid? SalesRepId,
         Guid? AgencyId,
         Guid? ShopId,
-        List<Guid>? ProvinceIds);
+        List<Guid>? ProvinceIds,
+        string? DisplayName);
 
     public async Task<VerifyRepShopRelationshipResponse> VerifyRepShopAsync(
         Guid repId,
@@ -116,7 +118,11 @@ public sealed class OrganizationClient : IOrganizationClient
                 agency.AgencyId,
                 province.ProvinceId,
                 shop.Latitude,
-                shop.Longitude))
+                shop.Longitude,
+                shop.OwnerName,
+                shop.OwnerEmail,
+                agency.Name,
+                agency.Email))
             .FirstOrDefault();
     }
 
@@ -136,7 +142,8 @@ public sealed class OrganizationClient : IOrganizationClient
     private sealed record AgencyHierarchyNode(
         Guid AgencyId,
         string Name,
-        IReadOnlyList<TerritoryHierarchyNode> Territories);
+        IReadOnlyList<TerritoryHierarchyNode> Territories,
+        string? Email);
 
     private sealed record TerritoryHierarchyNode(
         Guid TerritoryId,
@@ -151,5 +158,6 @@ public sealed class OrganizationClient : IOrganizationClient
         string Address,
         decimal Latitude,
         decimal Longitude,
-        decimal CreditLimit);
+        decimal CreditLimit,
+        string? OwnerEmail);
 }

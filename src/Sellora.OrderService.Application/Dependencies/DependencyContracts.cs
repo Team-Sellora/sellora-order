@@ -57,7 +57,11 @@ public sealed record ShopPlacement(
     Guid AgencyId,
     Guid ProvinceId,
     decimal Latitude,
-    decimal Longitude);
+    decimal Longitude,
+    string? OwnerName = null,
+    string? OwnerEmail = null,
+    string? AgencyName = null,
+    string? AgencyEmail = null);
 
 /// <summary>sellora-inventory: Application/Stock/InventoryOwnerResponse.cs</summary>
 public sealed record InventoryOwnerResponse(

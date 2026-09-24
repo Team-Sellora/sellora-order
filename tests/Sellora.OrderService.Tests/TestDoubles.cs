@@ -16,4 +16,10 @@ internal sealed class CallerStub : ICurrentUserContext
     public Guid? AgencyId { get; init; }
     public Guid? ShopId { get; init; }
     public IReadOnlyCollection<Guid> ProvinceIds { get; init; } = Array.Empty<Guid>();
+    public string? DisplayName { get; init; } = "Ruwan Dias";
+}
+
+internal sealed class FixedCorrelation(string correlationId) : Sellora.OrderService.Application.Outbox.ICorrelationIdAccessor
+{
+    public string GetCorrelationId() => correlationId;
 }

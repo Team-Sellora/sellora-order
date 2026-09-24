@@ -1,3 +1,7 @@
+using Sellora.OrderService.Infrastructure.Outbox;
+using Sellora.OrderService.Application.Outbox;
+using Sellora.OrderService.Application.Events;
+using Sellora.OrderService.Api.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
@@ -84,6 +88,20 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddDbContext<OrderDbContext>(options =>
     options.UseNpgsql(connectionString));
 
+// US-E4-4: order events go through the transactional outbox, so an order
+// change and its events commit together; the relay publishes them to Kafka.
+builder.Services.AddScoped<ICorrelationIdAccessor, HttpCorrelationIdAccessor>();
+builder.Services.AddScoped<IOutboxWriter, EntityFrameworkOutboxWriter>();
+builder.Services.AddScoped<IOrderEventOutbox, OrderEventOutbox>();
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.Configure<OutboxRelayOptions>(builder.Configuration.GetSection(OutboxRelayOptions.SectionName));
+builder.Services.AddSingleton<IEventPublisher, KafkaEventPublisher>();
+
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddHostedService<OutboxRelayService>();
+}
+
 builder.Services.AddScoped<IOrderCreationService, OrderCreationService>();
 builder.Services.AddScoped<IOrderReadService, OrderReadService>();
 
@@ -129,6 +147,9 @@ builder.Services.AddSwaggerGen();
 var app = builder.Build();
 
 app.UseExceptionHandler();
+
+// First, so every log line and every event for the request shares one ID.
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
 app.UseForwardedHeaders();
 

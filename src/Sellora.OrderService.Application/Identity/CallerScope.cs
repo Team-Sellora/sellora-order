@@ -9,7 +9,8 @@ public sealed record CallerScope(
     Guid? SalesRepId,
     Guid? AgencyId,
     Guid? ShopId,
-    IReadOnlyList<Guid> ProvinceIds)
+    IReadOnlyList<Guid> ProvinceIds,
+    string? DisplayName = null)
 {
     /// <summary>No profile in Organization: the caller sees nothing.</summary>
     public static CallerScope Empty { get; } = new(null, null, null, Array.Empty<Guid>());

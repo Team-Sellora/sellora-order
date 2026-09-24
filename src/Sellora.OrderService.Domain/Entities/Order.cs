@@ -83,6 +83,24 @@ public sealed class Order : ITenantScoped
 
     public DateTimeOffset? CancelledAt { get; private set; }
 
+    // ---- Contact snapshot (US-E4-4) ------------------------------------
+    // Taken when the order is placed, like the price snapshot on each line:
+    // the order's events carry them, so the Notification service can email
+    // the shop and agency without calling Organization back. Nullable
+    // because orders placed before US-E4-4 have none.
+
+    public string? ShopName { get; private set; }
+
+    public string? ShopOwnerName { get; private set; }
+
+    public string? ShopOwnerEmail { get; private set; }
+
+    public string? AgencyName { get; private set; }
+
+    public string? AgencyEmail { get; private set; }
+
+    public string? SalesRepName { get; private set; }
+
     public string? CancellationReason { get; private set; }
 
     public static Order Create(
@@ -189,6 +207,28 @@ public sealed class Order : ITenantScoped
             _verificationSteps.Add(new OrderVerificationStep(
                 OrderId, step.Step, step.Passed, step.Detail, recordedAt));
         }
+    }
+
+    /// <summary>
+    /// Snapshots who the order is for and who took it, as they were when it
+    /// was placed. Values are trimmed and cut to the column length.
+    /// </summary>
+    public void RecordContacts(OrderContacts contacts)
+    {
+        ArgumentNullException.ThrowIfNull(contacts);
+
+        ShopName = Clip(contacts.ShopName, 200);
+        ShopOwnerName = Clip(contacts.ShopOwnerName, 200);
+        ShopOwnerEmail = Clip(contacts.ShopOwnerEmail, 320);
+        AgencyName = Clip(contacts.AgencyName, 200);
+        AgencyEmail = Clip(contacts.AgencyEmail, 320);
+        SalesRepName = Clip(contacts.SalesRepName, 200);
+    }
+
+    private static string? Clip(string? value, int maxLength)
+    {
+        var trimmed = value?.Trim();
+        return string.IsNullOrEmpty(trimmed) ? null : trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     /// <summary>

@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Sellora.OrderService.Infrastructure.Persistence;
@@ -11,9 +12,11 @@ using Sellora.OrderService.Infrastructure.Persistence;
 namespace Sellora.OrderService.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(OrderDbContext))]
-    partial class OrderDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260924191942_AddOrderEventsOutbox")]
+    partial class AddOrderEventsOutbox
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -21,8 +24,6 @@ namespace Sellora.OrderService.Infrastructure.Persistence.Migrations
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
-
-            modelBuilder.HasSequence("outbox_message_sequence_seq");
 
             modelBuilder.Entity("Sellora.OrderService.Domain.Entities.Order", b =>
                 {
@@ -427,14 +428,10 @@ namespace Sellora.OrderService.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(16)")
                         .HasColumnName("schema_version");
 
-                    b.Property<long>("Sequence")
-                        .HasColumnType("bigint")
-                        .HasColumnName("sequence");
-
                     b.HasKey("OutboxId")
                         .HasName("pk_outbox_message");
 
-                    b.HasIndex("MessageKey", "Sequence")
+                    b.HasIndex("MessageKey", "OccurredAt", "Ordinal")
                         .HasDatabaseName("ix_outbox_message_key_order");
 
                     b.HasIndex("PublishedAt", "NextAttemptAt", "LeaseExpiresAt")

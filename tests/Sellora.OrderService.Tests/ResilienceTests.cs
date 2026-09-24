@@ -32,6 +32,10 @@ public sealed class ResilienceTests
         var services = new ServiceCollection();
         services.AddLogging();
         services.AddSingleton<IAccessTokenAccessor>(new NoToken());
+        // ForwardCorrelationIdHandler (registered by AddOrderDependencies)
+        // needs this; the real app gets it from HttpCorrelationIdAccessor.
+        services.AddSingleton<Sellora.OrderService.Application.Outbox.ICorrelationIdAccessor>(
+            new FixedCorrelation("resilience-test"));
         services.AddOrderDependencies(configuration);
         services.ConfigureHttpClientDefaults(builder => builder.ConfigurePrimaryHttpMessageHandler(() => primary));
         return services.BuildServiceProvider();
