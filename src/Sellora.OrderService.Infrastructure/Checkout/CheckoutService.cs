@@ -1,3 +1,4 @@
+using Sellora.OrderService.Application.Events;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -34,6 +35,7 @@ public sealed class CheckoutService : ICheckoutService
     private readonly IInventoryClient _inventory;
     private readonly TimeProvider _clock;
     private readonly CheckInPolicy _policy;
+    private readonly IOrderEventOutbox _events;
     private readonly ILogger<CheckoutService> _logger;
 
     public CheckoutService(
@@ -44,8 +46,10 @@ public sealed class CheckoutService : ICheckoutService
         IInventoryClient inventory,
         TimeProvider clock,
         IOptions<CheckInOptions> options,
+        IOrderEventOutbox events,
         ILogger<CheckoutService> logger)
     {
+        _events = events;
         _db = db;
         _tenant = tenant;
         _caller = caller;
@@ -161,6 +165,7 @@ public sealed class CheckoutService : ICheckoutService
         {
             case ReservationConfirmOutcome.NoLongerActive:
                 order.CancelBecauseReservationExpired(now);
+                _events.OrderCancelled(order, now);
                 await _db.SaveChangesAsync(CancellationToken.None);
 
                 _logger.LogWarning(
@@ -181,6 +186,10 @@ public sealed class CheckoutService : ICheckoutService
 
         // 3. Record the payment and confirm the order.
         var payment = order.CompleteCashCheckout(salesRepId, request.Amount, request.Method, now);
+
+        // US-E4-4: both events commit with the payment, in this order.
+        _events.OrderConfirmed(order, now);
+        _events.PaymentRecorded(order, payment, now);
 
         try
         {

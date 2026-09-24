@@ -7,6 +7,7 @@ using Sellora.OrderService.Application.Identity;
 using Sellora.OrderService.Domain.Entities;
 using Sellora.OrderService.Domain.Orders;
 using Sellora.OrderService.Infrastructure.Checkout;
+using Sellora.OrderService.Infrastructure.Outbox;
 
 namespace Sellora.OrderService.Tests;
 
@@ -21,6 +22,7 @@ public sealed class CheckoutServiceTests
     private readonly FakeOrganization _organization = new();
     private readonly FakeInventory _inventory = new();
     private readonly FakeClock _clock = new(DateTimeOffset.UtcNow);
+    private const string CorrelationId = "checkout-test-correlation";
 
     public CheckoutServiceTests(PostgreSqlFixture fixture)
     {
@@ -48,6 +50,7 @@ public sealed class CheckoutServiceTests
             _inventory,
             _clock,
             Options.Create(new CheckInOptions()),
+            new OrderEventOutbox(new EntityFrameworkOutboxWriter(db), new FixedCorrelation(CorrelationId)),
             NullLogger<CheckoutService>.Instance);
         return await action(service);
     }
