@@ -170,15 +170,15 @@ jobs:
           docker build -t "$IMAGE_TAG" -t "sellora-order:ci" .
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
 
-      - name: Verify health with unreachable dependencies
+      # US-E4-1b-D2 — Confirm the app starts and /health returns 200 even when
+      # Catalog, Inventory and Organization are completely unreachable.
+      # The three BaseUrls are set to *.invalid so DNS always fails — that is
+      # the point: HttpClientFactory + Polly registration must NOT make any
+      # outbound call at startup.  The CI postgres service is reused so
+      # migrations can complete without a crash.
+      - name: Verify health with unreachable dependencies (D2)
         run: |
           set -euo pipefail
-
-          cleanup() {
-            docker logs sellora-order-ci 2>&1 || true
-            docker rm -f sellora-order-ci 2>/dev/null || true
-          }
-          trap cleanup EXIT
 
           docker run -d --name sellora-order-ci \
             --network host \
@@ -194,15 +194,23 @@ jobs:
             -e Jwt__Audience__0="ci-audience" \
             sellora-order:ci
 
+          echo "Waiting for container to start..."
           for i in $(seq 1 15); do
             STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8099/health || echo "000")
             if [ "$STATUS" = "200" ]; then
-              echo "/health returned 200"
-              exit 0
+              echo "✅ /health returned 200 — app starts healthy without dependencies"
+              break
             fi
-            echo "Attempt $i -> /health=${STATUS}"
+            echo "  Attempt $i: status=$STATUS — retrying in 2s"
             sleep 2
           done
 
-          echo "Health check failed after 15 attempts"
-          exit 1
+          if [ "$STATUS" != "200" ]; then
+            echo "❌ Health check did not return 200 after 30s"
+            docker logs sellora-order-ci
+            exit 1
+          fi
+
+      - name: Cleanup health-check container
+        if: always()
+        run: docker rm -f sellora-order-ci || true
