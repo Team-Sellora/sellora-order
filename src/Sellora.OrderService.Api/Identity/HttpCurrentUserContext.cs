@@ -3,35 +3,29 @@ using Sellora.OrderService.Application.Identity;
 namespace Sellora.OrderService.Api.Identity;
 
 /// <summary>
-/// Reads caller identity from the JWT. MapInboundClaims = false, so claim
-/// names arrive exactly as WSO2 emits them ("sub", "roles", ...).
+/// Who is calling. Subject and role come from the validated token (raw WSO2
+/// claim names, MapInboundClaims = false). Hierarchy IDs come from
+/// Organization via <see cref="CallerScopeMiddleware"/> — never from token
+/// claims, so nobody has to copy database IDs into the identity provider.
 /// </summary>
 public sealed class HttpCurrentUserContext(IHttpContextAccessor accessor)
     : ICurrentUserContext
 {
     private System.Security.Claims.ClaimsPrincipal? User => accessor.HttpContext?.User;
 
+    private CallerScope Scope =>
+        accessor.HttpContext?.Items[CallerScopeMiddleware.ItemKey] as CallerScope ?? CallerScope.Empty;
+
     public string? Subject => User?.FindFirst("sub")?.Value;
 
     public string? Role => SelloraRoles.ByBreadth
         .FirstOrDefault(role => User?.HasClaim("roles", role) == true);
 
-    public Guid? SalesRepId => ReadGuid("salesRepId");
+    public Guid? SalesRepId => Scope.SalesRepId;
 
-    public Guid? AgencyId => ReadGuid("agencyId");
+    public Guid? AgencyId => Scope.AgencyId;
 
-    public Guid? ShopId => ReadGuid("shopId");
+    public Guid? ShopId => Scope.ShopId;
 
-    public IReadOnlyCollection<Guid> ProvinceIds =>
-        User?.FindAll("provinceId")
-            .Select(claim => Guid.TryParse(claim.Value, out var id) ? id : Guid.Empty)
-            .Where(id => id != Guid.Empty)
-            .Distinct()
-            .ToList()
-        ?? new List<Guid>();
-
-    private Guid? ReadGuid(string claimType) =>
-        Guid.TryParse(User?.FindFirst(claimType)?.Value, out var value) && value != Guid.Empty
-            ? value
-            : null;
+    public IReadOnlyCollection<Guid> ProvinceIds => Scope.ProvinceIds;
 }

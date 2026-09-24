@@ -5,6 +5,13 @@ namespace Sellora.OrderService.Application.Dependencies;
 /// <summary>Calls sellora-organization, forwarding the caller's bearer token.</summary>
 public interface IOrganizationClient
 {
+    /// <summary>
+    /// GET /api/me/scope with the caller's token. Null when the caller has no
+    /// active profile in Organization (404).
+    /// </summary>
+    Task<Sellora.OrderService.Application.Identity.CallerScope?> GetCallerScopeAsync(
+        CancellationToken cancellationToken);
+
     /// <summary>GET /api/rep-shop-relationships/verify</summary>
     Task<VerifyRepShopRelationshipResponse> VerifyRepShopAsync(
         Guid repId,

@@ -17,6 +17,17 @@ internal sealed class FakeOrganization : IOrganizationClient
 
     public Task<ShopPlacement?> FindShopAsync(Guid shopId, CancellationToken cancellationToken) =>
         Task.FromResult(Shop);
+
+    public Sellora.OrderService.Application.Identity.CallerScope? Scope { get; set; }
+
+    public int ScopeCalls { get; private set; }
+
+    public Task<Sellora.OrderService.Application.Identity.CallerScope?> GetCallerScopeAsync(CancellationToken cancellationToken)
+    {
+        ScopeCalls++;
+        if (Unavailable is { } dependency) throw new DependencyUnavailableException(dependency);
+        return Task.FromResult(Scope);
+    }
 }
 
 internal sealed class FakeCatalog : ICatalogClient
