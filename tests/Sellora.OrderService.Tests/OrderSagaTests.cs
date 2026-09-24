@@ -25,7 +25,8 @@ public sealed class OrderSagaTests
     {
         _fixture = fixture;
         _organization.Shop = new ShopPlacement(
-            _place.ShopId, "Perera Stores", 10_000m, _place.TerritoryId, _place.AgencyId, _place.ProvinceId);
+            _place.ShopId, "Perera Stores", 10_000m, _place.TerritoryId, _place.AgencyId, _place.ProvinceId,
+            6.8960m, 79.8556m);
     }
 
     private Task<CreateOrderResult> SubmitAsync(params BasketLine[] lines) =>
@@ -271,7 +272,7 @@ public sealed class OrderSagaTests
     public async Task A_confirmed_order_keeps_its_reservation_even_if_confirmation_fails()
     {
         var soap = _catalog.Add("Soap", 100m);
-        _inventory.ConfirmSucceeds = false;
+        _inventory.ConfirmOutcome = ReservationConfirmOutcome.Rejected;
 
         var result = await SubmitAsync(OrderFulfilmentType.ScheduledDelivery, new BasketLine(soap.ProductId, 1));
 

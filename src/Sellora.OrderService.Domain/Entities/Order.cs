@@ -17,6 +17,7 @@ public sealed class Order : ITenantScoped
 
     private readonly List<OrderLine> _lines = new();
     private readonly List<OrderVerificationStep> _verificationSteps = new();
+    private readonly List<OrderCheckIn> _checkIns = new();
 
     private Order()
     {
@@ -62,6 +63,27 @@ public sealed class Order : ITenantScoped
 
     public IReadOnlyCollection<OrderVerificationStep> VerificationSteps =>
         _verificationSteps.AsReadOnly();
+
+    /// <summary>Every GPS check-in attempt, accepted or not (US-E4-3).</summary>
+    public IReadOnlyCollection<OrderCheckIn> CheckIns => _checkIns.AsReadOnly();
+
+    /// <summary>The cash collection, once checkout succeeds.</summary>
+    public Payment? Payment { get; private set; }
+
+    /// <summary>
+    /// Where the sale was completed — the accepted check-in's coordinates.
+    /// Stored on the order itself so US-E4-4's event publisher can read it
+    /// without joining anything.
+    /// </summary>
+    public double? CheckoutLatitude { get; private set; }
+
+    public double? CheckoutLongitude { get; private set; }
+
+    public DateTimeOffset? CheckedOutAt { get; private set; }
+
+    public DateTimeOffset? CancelledAt { get; private set; }
+
+    public string? CancellationReason { get; private set; }
 
     public static Order Create(
         Guid companyId,
@@ -166,6 +188,184 @@ public sealed class Order : ITenantScoped
         {
             _verificationSteps.Add(new OrderVerificationStep(
                 OrderId, step.Step, step.Passed, step.Detail, recordedAt));
+        }
+    }
+
+    /// <summary>
+    /// Records a GPS check-in attempt for this order and returns it. A
+    /// check-in outside the radius is recorded as rejected but does not
+    /// throw: a failed check-in is not a failed order, the rep may just need
+    /// to walk closer (US-E4-3-T4). The reservation is untouched either way.
+    /// </summary>
+    public OrderCheckIn RecordCheckIn(
+        Guid salesRepId,
+        GeoPoint reported,
+        double? accuracyMeters,
+        GeoPoint shop,
+        DateTimeOffset capturedAt,
+        DateTimeOffset now,
+        CheckInPolicy policy)
+    {
+        EnsureAwaitingCashCheckout();
+        EnsureOwnRep(salesRepId);
+
+        if (capturedAt > now + policy.MaxClockSkew)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.CapturedInFuture,
+                $"The location timestamp {capturedAt:u} is in the future. Check the device clock and try again.");
+        }
+
+        if (capturedAt < now - policy.MaxCaptureAge)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.CaptureTooOld,
+                $"The location fix from {capturedAt:u} is too old. Refresh your location and try again.");
+        }
+
+        if (accuracyMeters is { } accuracy && (accuracy < 0 || double.IsNaN(accuracy)))
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.InvalidCoordinates,
+                "accuracyMeters cannot be negative.");
+        }
+
+        var distance = GeoDistance.Meters(reported, shop);
+
+        // Documented rule: the exact radius is inside (<=).
+        var accepted = distance <= policy.RadiusMeters;
+
+        var checkIn = new OrderCheckIn(
+            OrderId,
+            CompanyId,
+            salesRepId,
+            reported,
+            accuracyMeters,
+            shop,
+            distance,
+            policy.RadiusMeters,
+            accepted,
+            capturedAt,
+            now,
+            accepted ? now + policy.Validity : now);
+
+        _checkIns.Add(checkIn);
+        return checkIn;
+    }
+
+    /// <summary>
+    /// Every rule checkout depends on, checked without changing anything, so
+    /// the caller can verify before confirming stock in Inventory. Returns
+    /// the check-in that permits the payment.
+    /// </summary>
+    public OrderCheckIn EnsureCanCompleteCashCheckout(
+        Guid salesRepId,
+        decimal amount,
+        PaymentMethod method,
+        DateTimeOffset now)
+    {
+        EnsureAwaitingCashCheckout();
+        EnsureOwnRep(salesRepId);
+
+        if (!Enum.IsDefined(method))
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.UnsupportedPaymentMethod,
+                "Only cash payments can be recorded.");
+        }
+
+        var latestAccepted = _checkIns
+            .Where(checkIn => checkIn.Accepted && checkIn.SalesRepId == salesRepId)
+            .OrderByDescending(checkIn => checkIn.RecordedAt)
+            .FirstOrDefault();
+
+        if (latestAccepted is null)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.CheckInRequired,
+                "A successful GPS check-in at the shop is required before recording payment.");
+        }
+
+        if (!latestAccepted.IsValidFor(salesRepId, now))
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.CheckInExpired,
+                $"Your check-in expired at {latestAccepted.ExpiresAt:u}. Check in again at the shop.");
+        }
+
+        if (amount != Total)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.AmountMismatch,
+                FormattableString.Invariant(
+                    $"The payment amount {amount:N2} does not match the order total {Total:N2}."));
+        }
+
+        return latestAccepted;
+    }
+
+    /// <summary>
+    /// Records the cash payment, stamps the checkout location and confirms
+    /// the order. The caller must already have confirmed the stock
+    /// reservation in Inventory.
+    /// </summary>
+    public Payment CompleteCashCheckout(
+        Guid salesRepId,
+        decimal amount,
+        PaymentMethod method,
+        DateTimeOffset now)
+    {
+        var checkIn = EnsureCanCompleteCashCheckout(salesRepId, amount, method, now);
+
+        var payment = new Payment(OrderId, CompanyId, amount, method, salesRepId, checkIn, now);
+
+        Payment = payment;
+        CheckoutLatitude = checkIn.Latitude;
+        CheckoutLongitude = checkIn.Longitude;
+        CheckedOutAt = now;
+        Status = OrderStatus.Confirmed;
+
+        return payment;
+    }
+
+    /// <summary>
+    /// Inventory released the held stock (its sweeper expired the
+    /// reservation) before the rep checked out. The sale cannot complete,
+    /// so the order is cancelled rather than left waiting forever.
+    /// </summary>
+    public void CancelBecauseReservationExpired(DateTimeOffset now)
+    {
+        EnsureAwaitingCashCheckout();
+
+        Status = OrderStatus.Cancelled;
+        CancelledAt = now;
+        CancellationReason = "The stock hold expired before checkout.";
+    }
+
+    private void EnsureAwaitingCashCheckout()
+    {
+        if (FulfilmentType != OrderFulfilmentType.ImmediateCashSale)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.NotAwaitingCheckout,
+                "Only immediate cash sales are checked out at the shop; this order is a scheduled delivery.");
+        }
+
+        if (Status != OrderStatus.AwaitingCheckout)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.NotAwaitingCheckout,
+                $"This order is {Status} and is no longer awaiting checkout.");
+        }
+    }
+
+    private void EnsureOwnRep(Guid salesRepId)
+    {
+        if (salesRepId != SalesRepId)
+        {
+            throw new CheckoutRuleViolationException(
+                CheckoutFailure.WrongSalesRep,
+                "Only the sales rep who placed the order can check it out.");
         }
     }
 

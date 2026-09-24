@@ -23,12 +23,13 @@ internal static class TestOrders
         Guid repId,
         Placement placement,
         decimal unitPrice = 100m,
-        string? reference = null)
+        string? reference = null,
+        OrderFulfilmentType fulfilmentType = OrderFulfilmentType.ScheduledDelivery)
     {
         var now = DateTimeOffset.UtcNow;
         var order = Order.Create(
             companyId, placement.ShopId, repId, placement.AgencyId, placement.TerritoryId,
-            placement.ProvinceId, OrderFulfilmentType.ScheduledDelivery,
+            placement.ProvinceId, fulfilmentType,
             reference ?? OrderReferenceGenerator.Generate(now), now,
             new[] { new NewOrderLine(Guid.NewGuid(), "Sunlight Soap 100g", 2, unitPrice) });
 

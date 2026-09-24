@@ -1,3 +1,4 @@
+using Sellora.OrderService.Application.Checkout;
 using Sellora.OrderService.Domain.Entities;
 
 namespace Sellora.OrderService.Application.Orders;
@@ -31,7 +32,8 @@ public sealed record OrderResponse(
     decimal Total,
     Guid ReservationId,
     IReadOnlyList<OrderLineResponse> Lines,
-    IReadOnlyList<OrderVerificationStepResponse> VerificationSteps)
+    IReadOnlyList<OrderVerificationStepResponse> VerificationSteps,
+    OrderCheckoutResponse? Checkout = null)
 {
     public static OrderResponse From(Order order) => new(
         order.OrderId,
@@ -64,7 +66,51 @@ public sealed record OrderResponse(
                 step.Passed,
                 step.Detail,
                 step.RecordedAt))
-            .ToList());
+            .ToList(),
+        OrderCheckoutResponse.From(order));
+}
+
+/// <summary>
+/// Checkout state for a cash sale (US-E4-3). Null for orders that never
+/// had a check-in, payment or cancellation.
+/// </summary>
+public sealed record OrderCheckoutResponse(
+    double? CheckoutLatitude,
+    double? CheckoutLongitude,
+    DateTimeOffset? CheckedOutAt,
+    PaymentResponse? Payment,
+    CheckInResponse? LatestCheckIn,
+    DateTimeOffset? CancelledAt,
+    string? CancellationReason)
+{
+    public static OrderCheckoutResponse? From(Order order)
+    {
+        var latest = order.CheckIns.OrderByDescending(checkIn => checkIn.RecordedAt).FirstOrDefault();
+
+        if (latest is null && order.Payment is null && order.CancelledAt is null)
+        {
+            return null;
+        }
+
+        return new OrderCheckoutResponse(
+            order.CheckoutLatitude,
+            order.CheckoutLongitude,
+            order.CheckedOutAt,
+            order.Payment is { } payment
+                ? new PaymentResponse(
+                    payment.PaymentId, payment.OrderId, payment.Amount, payment.Method.ToString(),
+                    payment.SalesRepId, payment.CheckInId, payment.Latitude, payment.Longitude,
+                    payment.DistanceMeters, payment.RecordedAt)
+                : null,
+            latest is null
+                ? null
+                : new CheckInResponse(
+                    latest.OrderCheckInId, latest.OrderId, latest.Accepted, latest.DistanceMeters,
+                    latest.RadiusMeters, latest.Latitude, latest.Longitude, latest.RecordedAt,
+                    latest.Accepted ? latest.ExpiresAt : null),
+            order.CancelledAt,
+            order.CancellationReason);
+    }
 }
 
 public sealed record OrderSummaryResponse(

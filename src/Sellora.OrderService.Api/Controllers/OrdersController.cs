@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Sellora.OrderService.Api.Authorization;
 using Sellora.OrderService.Api.Contracts;
+using Sellora.OrderService.Application.Checkout;
 using Sellora.OrderService.Application.Orders;
 using Sellora.OrderService.Domain.Orders;
 
@@ -18,14 +19,146 @@ public sealed class OrdersController : ControllerBase
 {
     private readonly IOrderCreationService _creation;
     private readonly IOrderReadService _reads;
+    private readonly ICheckoutService _checkout;
 
     public OrdersController(
         IOrderCreationService creation,
-        IOrderReadService reads)
+        IOrderReadService reads,
+        ICheckoutService checkout)
     {
         _creation = creation;
         _reads = reads;
+        _checkout = checkout;
     }
+
+    /// <summary>
+    /// US-E4-3 GPS gate. Separate from order creation on purpose (open issue
+    /// #7): the gate applies at checkout, when the rep is at the counter.
+    /// </summary>
+    [HttpPost("{orderId:guid}/checkin")]
+    [Authorize(Policy = RolePolicies.RequireSalesRep)]
+    [ProducesResponseType(typeof(CheckInResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> CheckIn(
+        Guid orderId,
+        CheckInRequestBody body,
+        CancellationToken cancellationToken)
+    {
+        if (body.Latitude is not { } latitude || body.Longitude is not { } longitude || body.CapturedAt is not { } capturedAt)
+        {
+            return ProblemResult(StatusCodes.Status400BadRequest, "Invalid check-in",
+                "latitude, longitude and capturedAt are required.");
+        }
+
+        var result = await _checkout.CheckInAsync(
+            orderId,
+            new CheckInRequest(latitude, longitude, capturedAt, body.AccuracyMeters),
+            cancellationToken);
+
+        if (result.Outcome == CheckoutOutcome.Succeeded)
+        {
+            return Ok(result.CheckIn);
+        }
+
+        if (result.Outcome == CheckoutOutcome.OutsideRadius)
+        {
+            // 403 with the measured distance: the rep needs "you are 340 m
+            // away", not just "failed", to know to walk closer.
+            var problem = BuildProblem(StatusCodes.Status403Forbidden, "Outside the permitted radius", result.Message);
+            problem.Extensions["distanceMeters"] = result.CheckIn!.DistanceMeters;
+            problem.Extensions["radiusMeters"] = result.CheckIn.RadiusMeters;
+            problem.Extensions["checkInId"] = result.CheckIn.CheckInId;
+            return StatusCode(StatusCodes.Status403Forbidden, problem);
+        }
+
+        return CheckoutProblem(result.Outcome, result.Message, null, null);
+    }
+
+    /// <summary>
+    /// Records the cash payment. Gated server-side on a stored, unexpired,
+    /// accepted check-in by the same rep — without that guard every other
+    /// fraud measure is decorative.
+    /// </summary>
+    [HttpPost("{orderId:guid}/payment")]
+    [Authorize(Policy = RolePolicies.RequireSalesRep)]
+    [ProducesResponseType(typeof(PaymentResponse), StatusCodes.Status201Created)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status422UnprocessableEntity)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<IActionResult> RecordPayment(
+        Guid orderId,
+        PaymentRequestBody body,
+        CancellationToken cancellationToken)
+    {
+        if (body.Amount is not { } amount)
+        {
+            return ProblemResult(StatusCodes.Status400BadRequest, "Invalid payment", "amount is required.");
+        }
+
+        if (!Enum.TryParse<PaymentMethod>(body.Method, ignoreCase: true, out var method) || !Enum.IsDefined(method))
+        {
+            return ProblemResult(StatusCodes.Status400BadRequest, "Invalid payment", "method must be Cash; no other payment method is supported.");
+        }
+
+        var result = await _checkout.RecordPaymentAsync(orderId, new PaymentRequest(amount, method), cancellationToken);
+
+        return result.Outcome == CheckoutOutcome.Succeeded
+            ? CreatedAtAction(nameof(GetById), new { orderId }, result.Payment)
+            : CheckoutProblem(result.Outcome, result.Message, result.ExpectedAmount, result.Dependency, amount);
+    }
+
+    private ObjectResult CheckoutProblem(
+        CheckoutOutcome outcome,
+        string? message,
+        decimal? expectedAmount,
+        string? dependency,
+        decimal? submittedAmount = null)
+    {
+        var (status, title) = outcome switch
+        {
+            CheckoutOutcome.InvalidRequest => (StatusCodes.Status400BadRequest, "Invalid request"),
+            CheckoutOutcome.TenantNotAvailable => (StatusCodes.Status401Unauthorized, "Tenant not available"),
+            CheckoutOutcome.CallerNotSalesRep => (StatusCodes.Status403Forbidden, "Sales rep identity missing"),
+            CheckoutOutcome.CheckInRequired => (StatusCodes.Status403Forbidden, "Check-in required"),
+            CheckoutOutcome.CheckInExpired => (StatusCodes.Status403Forbidden, "Check-in expired"),
+            CheckoutOutcome.OrderNotFound => (StatusCodes.Status404NotFound, "Order not found"),
+            CheckoutOutcome.NotAwaitingCheckout => (StatusCodes.Status409Conflict, "Not awaiting checkout"),
+            CheckoutOutcome.ReservationExpired => (StatusCodes.Status409Conflict, "Stock hold expired"),
+            CheckoutOutcome.AmountMismatch => (StatusCodes.Status422UnprocessableEntity, "Amount does not match"),
+            CheckoutOutcome.ShopLocationUnavailable => (StatusCodes.Status422UnprocessableEntity, "Shop location unavailable"),
+            CheckoutOutcome.DependencyUnavailable => (StatusCodes.Status503ServiceUnavailable, "Dependency unavailable"),
+            _ => (StatusCodes.Status500InternalServerError, "Checkout failed")
+        };
+
+        var problem = BuildProblem(status, title, message);
+
+        if (expectedAmount is not null)
+        {
+            problem.Extensions["expectedAmount"] = expectedAmount;
+            problem.Extensions["submittedAmount"] = submittedAmount;
+        }
+
+        if (dependency is not null)
+        {
+            problem.Extensions["dependency"] = dependency;
+            Response.Headers.RetryAfter = "30";
+        }
+
+        return StatusCode(status, problem);
+    }
+
+    private static ProblemDetails BuildProblem(int status, string title, string? detail) => new()
+    {
+        Status = status,
+        Title = title,
+        Detail = detail
+    };
 
     [HttpPost]
     [Authorize(Policy = RolePolicies.RequireSalesRep)]

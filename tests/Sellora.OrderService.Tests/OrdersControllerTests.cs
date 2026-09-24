@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Sellora.OrderService.Api.Contracts;
 using Sellora.OrderService.Api.Controllers;
+using Sellora.OrderService.Application.Checkout;
 using Sellora.OrderService.Application.Orders;
 
 namespace Sellora.OrderService.Tests;
@@ -33,7 +34,7 @@ public sealed class OrdersControllerTests
         Assert.Contains("ImmediateCashSale", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
     }
 
-    private static OrdersController Controller(CreateOrderResult result) => new(new CreationSpy(result), null!)
+    private static OrdersController Controller(CreateOrderResult result) => new(new CreationSpy(result), null!, null!)
     {
         ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
     };
@@ -113,7 +114,7 @@ public sealed class OrdersControllerTests
     public async Task Failures_map_to_the_right_status(CreateOrderOutcome outcome, int status)
     {
         var controller = new OrdersController(
-            new CreationSpy(CreateOrderResult.Failed(outcome, "specific reason")), null!);
+            new CreationSpy(CreateOrderResult.Failed(outcome, "specific reason")), null!, null!);
 
         var result = await controller.Create(ValidBody, CancellationToken.None);
 
@@ -130,12 +131,84 @@ public sealed class OrdersControllerTests
             DateTimeOffset.UtcNow, 10m, 10m,
             Guid.NewGuid(), Array.Empty<OrderLineResponse>(), Array.Empty<OrderVerificationStepResponse>());
 
-        var controller = new OrdersController(new CreationSpy(CreateOrderResult.Created(order)), null!);
+        var controller = new OrdersController(new CreationSpy(CreateOrderResult.Created(order)), null!, null!);
 
         var result = await controller.Create(ValidBody, CancellationToken.None);
 
         var created = Assert.IsType<CreatedAtActionResult>(result);
         Assert.Equal(nameof(OrdersController.GetById), created.ActionName);
         Assert.Same(order, created.Value);
+    }
+
+    private sealed class CheckoutStub(CheckInResult checkIn, PaymentResult payment) : ICheckoutService
+    {
+        public Task<CheckInResult> CheckInAsync(Guid orderId, CheckInRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(checkIn);
+
+        public Task<PaymentResult> RecordPaymentAsync(Guid orderId, PaymentRequest request, CancellationToken cancellationToken) =>
+            Task.FromResult(payment);
+    }
+
+    private static OrdersController CheckoutController(CheckInResult? checkIn = null, PaymentResult? payment = null) =>
+        new(null!, null!, new CheckoutStub(
+            checkIn ?? CheckInResult.Failed(CheckoutOutcome.InvalidRequest, "x"),
+            payment ?? PaymentResult.Failed(CheckoutOutcome.InvalidRequest, "x")))
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+    [Fact]
+    public async Task Rejected_check_in_is_403_with_the_measured_distance()
+    {
+        var rejected = new CheckInResponse(Guid.NewGuid(), Guid.NewGuid(), false, 342.5, 300, 6.9, 79.8, DateTimeOffset.UtcNow, null);
+        var controller = CheckoutController(checkIn: CheckInResult.From(rejected));
+
+        var result = await controller.CheckIn(
+            Guid.NewGuid(),
+            new CheckInRequestBody { Latitude = 6.9, Longitude = 79.8, CapturedAt = DateTimeOffset.UtcNow },
+            CancellationToken.None);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(403, objectResult.StatusCode);
+        var problem = Assert.IsType<ProblemDetails>(objectResult.Value);
+        Assert.Equal(342.5, problem.Extensions["distanceMeters"]);
+        Assert.Contains("343 m", problem.Detail);
+    }
+
+    [Fact]
+    public async Task Missing_coordinates_are_a_400()
+    {
+        var result = await CheckoutController().CheckIn(
+            Guid.NewGuid(), new CheckInRequestBody { Latitude = 6.9 }, CancellationToken.None);
+
+        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
+    }
+
+    [Theory]
+    [InlineData(CheckoutOutcome.CheckInRequired, 403)]
+    [InlineData(CheckoutOutcome.CheckInExpired, 403)]
+    [InlineData(CheckoutOutcome.OrderNotFound, 404)]
+    [InlineData(CheckoutOutcome.NotAwaitingCheckout, 409)]
+    [InlineData(CheckoutOutcome.ReservationExpired, 409)]
+    [InlineData(CheckoutOutcome.AmountMismatch, 422)]
+    public async Task Payment_failures_map_to_the_right_status(CheckoutOutcome outcome, int status)
+    {
+        var controller = CheckoutController(payment: PaymentResult.Failed(outcome, "reason", 12_500m));
+
+        var result = await controller.RecordPayment(
+            Guid.NewGuid(), new PaymentRequestBody { Amount = 12_000m, Method = "Cash" }, CancellationToken.None);
+
+        Assert.Equal(status, Assert.IsType<ObjectResult>(result).StatusCode);
+    }
+
+    [Fact]
+    public async Task Only_cash_is_accepted()
+    {
+        var result = await CheckoutController().RecordPayment(
+            Guid.NewGuid(), new PaymentRequestBody { Amount = 10m, Method = "Card" }, CancellationToken.None);
+
+        var objectResult = Assert.IsType<ObjectResult>(result);
+        Assert.Equal(400, objectResult.StatusCode);
+        Assert.Contains("Cash", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
     }
 }

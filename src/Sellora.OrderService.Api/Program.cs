@@ -5,9 +5,11 @@ using Microsoft.IdentityModel.Tokens;
 using Sellora.OrderService.Api.Authorization;
 using Sellora.OrderService.Api.Identity;
 using Sellora.OrderService.Api.Tenancy;
+using Sellora.OrderService.Application.Checkout;
 using Sellora.OrderService.Application.Identity;
 using Sellora.OrderService.Application.Orders;
 using Sellora.OrderService.Domain.Tenancy;
+using Sellora.OrderService.Infrastructure.Checkout;
 using Sellora.OrderService.Infrastructure.Dependencies;
 using Sellora.OrderService.Infrastructure.Orders;
 using Sellora.OrderService.Infrastructure.Persistence;
@@ -66,6 +68,8 @@ builder.Services.AddScoped<ISystemTenantContext>(sp => sp.GetRequiredService<Htt
 builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
 builder.Services.AddScoped<IAccessTokenAccessor, HttpAccessTokenAccessor>();
 
+// US-E4-1b: Organization, Catalog and Inventory clients with timeouts and
+// circuit breakers. Registration only — startup never calls them.
 builder.Services.AddOrderDependencies(builder.Configuration);
 builder.Services.AddSingleton(TimeProvider.System);
 
@@ -82,6 +86,10 @@ builder.Services.AddDbContext<OrderDbContext>(options =>
 
 builder.Services.AddScoped<IOrderCreationService, OrderCreationService>();
 builder.Services.AddScoped<IOrderReadService, OrderReadService>();
+
+// US-E4-3: GPS gate limits come from configuration, never hard-coded.
+builder.Services.Configure<CheckInOptions>(builder.Configuration.GetSection(CheckInOptions.Section));
+builder.Services.AddScoped<ICheckoutService, CheckoutService>();
 
 builder.Services.AddProblemDetails();
 builder.Services.AddHealthChecks();

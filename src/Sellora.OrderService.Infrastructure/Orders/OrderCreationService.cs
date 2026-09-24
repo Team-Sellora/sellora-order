@@ -251,7 +251,8 @@ public sealed class OrderCreationService : IOrderCreationService
             // sold now. A cash sale keeps the stock merely held until the rep
             // checks in and takes payment (US-E4-3).
             if (order.FulfilmentType == OrderFulfilmentType.ScheduledDelivery &&
-                !await _inventory.ConfirmReservationAsync(reservation.ReservationId, CancellationToken.None))
+                await _inventory.ConfirmReservationAsync(reservation.ReservationId, CancellationToken.None)
+                    is not (ReservationConfirmOutcome.Confirmed or ReservationConfirmOutcome.AlreadyConfirmed))
             {
                 // The order stands; the stock is still held rather than sold,
                 // so nothing is oversold. Needs an operator to reconcile.

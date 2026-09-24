@@ -61,6 +61,8 @@ public sealed class DependencyClientTests
 
         Assert.NotNull(shop);
         Assert.Equal(250_000m, shop!.CreditLimit);
+        Assert.Equal(6.85m, shop.Latitude);
+        Assert.Equal(79.86m, shop.Longitude);
         Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), shop.AgencyId);
         Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), shop.ProvinceId);
     }
@@ -153,12 +155,18 @@ public sealed class DependencyClientTests
         Assert.Equal("/api/inventory-owners", handler.Requests[0].Request.RequestUri!.AbsolutePath);
     }
 
+    // The two 409 messages are copied verbatim from Inventory's
+    // StockReservationService.ConfirmAsync. If Inventory rewords them this
+    // test fails, instead of checkout silently misreading the outcome.
     [Theory]
-    [InlineData(HttpStatusCode.OK, true)]
-    [InlineData(HttpStatusCode.Conflict, false)]
-    public async Task Confirm_reports_whether_the_reservation_became_a_sale(HttpStatusCode status, bool expected)
+    [InlineData(HttpStatusCode.OK, "{}", ReservationConfirmOutcome.Confirmed)]
+    [InlineData(HttpStatusCode.Conflict, """{ "message": "The stock reservation has already been confirmed." }""", ReservationConfirmOutcome.AlreadyConfirmed)]
+    [InlineData(HttpStatusCode.Conflict, """{ "message": "The stock reservation is no longer active." }""", ReservationConfirmOutcome.NoLongerActive)]
+    [InlineData(HttpStatusCode.Conflict, """{ "message": "something else" }""", ReservationConfirmOutcome.Rejected)]
+    [InlineData(HttpStatusCode.NotFound, """{ "message": "Stock reservation was not found." }""", ReservationConfirmOutcome.Rejected)]
+    public async Task Confirm_distinguishes_every_outcome(HttpStatusCode status, string json, ReservationConfirmOutcome expected)
     {
-        var handler = StubHttpHandler.Json(status, """{ "message": "x" }""");
+        var handler = StubHttpHandler.Json(status, json);
         var client = new InventoryClient(Http(handler), NullLogger<InventoryClient>.Instance);
         var reservationId = Guid.NewGuid();
 
