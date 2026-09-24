@@ -60,9 +60,10 @@ public interface IInventoryClient
 
     /// <summary>
     /// POST /api/stock/reservations/{id}/confirm — turns held stock into sold.
-    /// Used when a scheduled delivery order is confirmed (US-E4-2).
+    /// Used when a scheduled delivery is confirmed (US-E4-2) and when a cash
+    /// sale is checked out (US-E4-3).
     /// </summary>
-    Task<bool> ConfirmReservationAsync(
+    Task<ReservationConfirmOutcome> ConfirmReservationAsync(
         Guid reservationId,
         CancellationToken cancellationToken);
 
@@ -93,4 +94,22 @@ public sealed record StockReservationAttempt(
 
     public static StockReservationAttempt Rejected(string? message) =>
         new(StockReservationStatus.Rejected, null, Array.Empty<ReservationShortage>(), message);
+}
+
+public enum ReservationConfirmOutcome
+{
+    /// <summary>Held stock is now sold.</summary>
+    Confirmed,
+
+    /// <summary>
+    /// A previous attempt already confirmed it. Treated as success, which is
+    /// what makes a retried checkout safe.
+    /// </summary>
+    AlreadyConfirmed,
+
+    /// <summary>Inventory released it (expired or cancelled). Nothing is sold.</summary>
+    NoLongerActive,
+
+    /// <summary>Not found, or refused for another reason.</summary>
+    Rejected
 }

@@ -48,3 +48,25 @@ Authorization: Bearer {{token}}
 ### Get one order (includes the four verification steps)
 GET {{host}}/api/orders/00000000-0000-0000-0000-000000000000
 Authorization: Bearer {{token}}
+
+### US-E4-3: check in at the shop (use the id of an AwaitingCheckout cash sale)
+POST {{host}}/api/orders/00000000-0000-0000-0000-000000000000/checkin
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "latitude": 6.8970,
+  "longitude": 79.8556,
+  "capturedAt": "2026-09-24T10:00:00+05:30",
+  "accuracyMeters": 8
+}
+
+### US-E4-3: record the cash payment (amount must equal the order total)
+POST {{host}}/api/orders/00000000-0000-0000-0000-000000000000/payment
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "amount": 2400.00,
+  "method": "Cash"
+}

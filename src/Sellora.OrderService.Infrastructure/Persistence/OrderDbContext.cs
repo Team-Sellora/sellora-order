@@ -20,6 +20,10 @@ public class OrderDbContext : DbContext
 
     public DbSet<OrderLine> OrderLines => Set<OrderLine>();
 
+    public DbSet<OrderCheckIn> OrderCheckIns => Set<OrderCheckIn>();
+
+    public DbSet<Payment> Payments => Set<Payment>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -32,5 +36,15 @@ public class OrderDbContext : DbContext
             .HasQueryFilter(order =>
                 _tenantContext.CompanyId != null &&
                 order.CompanyId == _tenantContext.CompanyId);
+
+        modelBuilder.Entity<OrderCheckIn>()
+            .HasQueryFilter(checkIn =>
+                _tenantContext.CompanyId != null &&
+                checkIn.CompanyId == _tenantContext.CompanyId);
+
+        modelBuilder.Entity<Payment>()
+            .HasQueryFilter(payment =>
+                _tenantContext.CompanyId != null &&
+                payment.CompanyId == _tenantContext.CompanyId);
     }
 }

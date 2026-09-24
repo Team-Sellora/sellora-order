@@ -53,7 +53,7 @@ internal sealed class FakeInventory : IInventoryClient
     public Func<string, Task>? OnReserved { get; set; }
     public Guid? VanOwnerId { get; set; }
     public List<Guid> Confirmed { get; } = new();
-    public bool ConfirmSucceeds { get; set; } = true;
+    public ReservationConfirmOutcome ConfirmOutcome { get; set; } = ReservationConfirmOutcome.Confirmed;
     public Guid? LastReservedOwnerId { get; private set; }
     public int ReserveCalls { get; private set; }
     public List<Guid> Released { get; } = new();
@@ -97,10 +97,11 @@ internal sealed class FakeInventory : IInventoryClient
         return Task.FromResult(VanOwnerId);
     }
 
-    public Task<bool> ConfirmReservationAsync(Guid reservationId, CancellationToken cancellationToken)
+    public Task<ReservationConfirmOutcome> ConfirmReservationAsync(Guid reservationId, CancellationToken cancellationToken)
     {
+        if (Unavailable) throw new DependencyUnavailableException(Dependency.Inventory);
         Confirmed.Add(reservationId);
-        return Task.FromResult(ConfirmSucceeds);
+        return Task.FromResult(ConfirmOutcome);
     }
 
     public Task<bool> ReleaseReservationAsync(Guid reservationId, CancellationToken cancellationToken)

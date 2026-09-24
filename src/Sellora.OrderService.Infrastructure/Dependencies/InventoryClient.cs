@@ -71,7 +71,13 @@ public sealed class InventoryClient : IInventoryClient
             .FirstOrDefault();
     }
 
-    public async Task<bool> ConfirmReservationAsync(
+    // Inventory's exact 409 messages (StockReservationService.ConfirmAsync).
+    // Matched by text because the 409 body carries no code; the
+    // InventoryClient tests pin both so a wording change fails CI here.
+    internal const string AlreadyConfirmedMessage = "The stock reservation has already been confirmed.";
+    internal const string NoLongerActiveMessage = "The stock reservation is no longer active.";
+
+    public async Task<ReservationConfirmOutcome> ConfirmReservationAsync(
         Guid reservationId,
         CancellationToken cancellationToken)
     {
@@ -84,14 +90,28 @@ public sealed class InventoryClient : IInventoryClient
 
         if (response.IsSuccessStatusCode)
         {
-            return true;
+            return ReservationConfirmOutcome.Confirmed;
+        }
+
+        var detail = await DependencyHttp.ReadErrorAsync(response, cancellationToken);
+
+        if (response.StatusCode == HttpStatusCode.Conflict)
+        {
+            if (string.Equals(detail, AlreadyConfirmedMessage, StringComparison.Ordinal))
+            {
+                return ReservationConfirmOutcome.AlreadyConfirmed;
+            }
+
+            if (string.Equals(detail, NoLongerActiveMessage, StringComparison.Ordinal))
+            {
+                return ReservationConfirmOutcome.NoLongerActive;
+            }
         }
 
         _logger.LogError(
             "Inventory refused to confirm reservation {ReservationId} (HTTP {Status}): {Detail}",
-            reservationId, (int)response.StatusCode,
-            await DependencyHttp.ReadErrorAsync(response, cancellationToken));
-        return false;
+            reservationId, (int)response.StatusCode, detail);
+        return ReservationConfirmOutcome.Rejected;
     }
 
     public async Task<bool> ReleaseReservationAsync(
