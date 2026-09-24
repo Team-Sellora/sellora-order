@@ -57,6 +57,8 @@ public sealed class OrderReadService : IOrderReadService
             .AsNoTracking()
             .Include(order => order.Lines)
             .Include(order => order.VerificationSteps)
+            .Include(order => order.CheckIns)
+            .Include(order => order.Payment)
             .ApplyCallerScope(_caller)
             .SingleOrDefaultAsync(order => order.OrderId == orderId, cancellationToken);
 
