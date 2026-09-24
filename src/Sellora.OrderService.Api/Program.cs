@@ -87,6 +87,9 @@ builder.Services.AddDbContext<OrderDbContext>(options =>
 builder.Services.AddScoped<IOrderCreationService, OrderCreationService>();
 builder.Services.AddScoped<IOrderReadService, OrderReadService>();
 
+builder.Services.AddMemoryCache();
+builder.Services.Configure<CallerScopeOptions>(builder.Configuration.GetSection(CallerScopeOptions.Section));
+
 // US-E4-3: GPS gate limits come from configuration, never hard-coded.
 builder.Services.Configure<CheckInOptions>(builder.Configuration.GetSection(CheckInOptions.Section));
 builder.Services.AddScoped<ICheckoutService, CheckoutService>();
@@ -151,6 +154,10 @@ if (!app.Environment.IsEnvironment("Container"))
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+
+// After authentication: resolve the caller's hierarchy scope from
+// Organization (cached), used by HttpCurrentUserContext.
+app.UseMiddleware<CallerScopeMiddleware>();
 
 app.MapControllers();
 app.MapHealthChecks("/health");

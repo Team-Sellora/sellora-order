@@ -1,49 +1,71 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Sellora.OrderService.Api.Identity;
+using Sellora.OrderService.Application.Identity;
 
 namespace Sellora.OrderService.Tests;
 
 public sealed class HttpCurrentUserContextTests
 {
-    private static HttpCurrentUserContext With(params Claim[] claims) => new(
-        new HttpContextAccessor
+    private static HttpCurrentUserContext With(CallerScope? scope, params Claim[] claims)
+    {
+        var context = new DefaultHttpContext
         {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test", "sub", "roles"))
-            }
-        });
+            User = new ClaimsPrincipal(new ClaimsIdentity(claims, "Test", "sub", "roles"))
+        };
+
+        if (scope is not null)
+        {
+            context.Items[CallerScopeMiddleware.ItemKey] = scope;
+        }
+
+        return new HttpCurrentUserContext(new HttpContextAccessor { HttpContext = context });
+    }
 
     [Fact]
-    public void Reads_raw_wso2_claim_names_and_picks_broadest_role()
+    public void Subject_and_broadest_role_come_from_the_token()
     {
-        var province1 = Guid.NewGuid();
-        var province2 = Guid.NewGuid();
-        var rep = Guid.NewGuid();
-
-        var caller = With(
+        var caller = With(null,
             new Claim("sub", "user-1"),
             new Claim("roles", "SalesRep"),
-            new Claim("roles", "AreaManager"),
-            new Claim("salesRepId", rep.ToString()),
-            new Claim("provinceId", province1.ToString()),
-            new Claim("provinceId", province2.ToString()),
-            new Claim("provinceId", "not-a-guid"));
+            new Claim("roles", "AreaManager"));
 
         Assert.Equal("user-1", caller.Subject);
         Assert.Equal("AreaManager", caller.Role);
+    }
+
+    [Fact]
+    public void Hierarchy_ids_come_from_organization_not_from_claims()
+    {
+        var rep = Guid.NewGuid();
+        var province = Guid.NewGuid();
+
+        var caller = With(
+            new CallerScope(rep, null, null, new[] { province }),
+            new Claim("sub", "user-1"),
+            new Claim("roles", "SalesRep"),
+            // A stale or forged claim must be ignored.
+            new Claim("salesRepId", Guid.NewGuid().ToString()));
+
         Assert.Equal(rep, caller.SalesRepId);
-        Assert.Equal(new[] { province1, province2 }, caller.ProvinceIds);
+        Assert.Equal(new[] { province }, caller.ProvinceIds);
         Assert.Null(caller.AgencyId);
     }
 
     [Fact]
-    public void Unknown_role_and_empty_guid_are_ignored()
+    public void No_resolved_scope_means_no_access()
     {
-        var caller = With(new Claim("roles", "Everyone"), new Claim("shopId", Guid.Empty.ToString()));
+        var caller = With(null,
+            new Claim("roles", "SalesRep"),
+            new Claim("salesRepId", Guid.NewGuid().ToString()));
 
-        Assert.Null(caller.Role);
-        Assert.Null(caller.ShopId);
+        Assert.Null(caller.SalesRepId);
+        Assert.Empty(caller.ProvinceIds);
+    }
+
+    [Fact]
+    public void Unknown_role_is_ignored()
+    {
+        Assert.Null(With(null, new Claim("roles", "Everyone")).Role);
     }
 }
