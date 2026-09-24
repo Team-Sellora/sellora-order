@@ -12,6 +12,15 @@ public class OutboxMessage : ITenantScoped
 {
     public Guid OutboxId { get; set; }
 
+    /// <summary>
+    /// Database-generated, strictly increasing insertion order. OccurredAt
+    /// alone cannot order events across separate transactions — two events
+    /// written moments apart can share a timestamp at clock resolution.
+    /// This is the true global order events were written in; the relay and
+    /// any reader that needs cross-order ordering use this, not OccurredAt.
+    /// </summary>
+    public long Sequence { get; set; }
+
     public Guid CompanyId { get; set; }
 
     public string AggregateType { get; set; } = string.Empty;

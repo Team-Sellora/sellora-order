@@ -238,6 +238,7 @@ public sealed class CheckoutService : ICheckoutService
     /// </summary>
     private Task<Order?> LoadOwnOrderAsync(Guid orderId, Guid salesRepId, CancellationToken cancellationToken) =>
         _db.Orders
+            .Include(order => order.Lines)
             .Include(order => order.CheckIns)
             .Include(order => order.Payment)
             .SingleOrDefaultAsync(

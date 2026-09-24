@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Sellora.OrderService.Domain.Entities;
 using Sellora.OrderService.Domain.Tenancy;
+using Sellora.OrderService.Infrastructure.Persistence.Configurations;
 
 namespace Sellora.OrderService.Infrastructure.Persistence;
 
@@ -37,6 +38,10 @@ public class OrderDbContext : DbContext
 
         modelBuilder.ApplyConfigurationsFromAssembly(
             typeof(OrderDbContext).Assembly);
+
+        modelBuilder.HasSequence<long>(OutboxMessageConfiguration.SequenceName)
+            .StartsAt(1)
+            .IncrementsBy(1);
 
         // Company boundary: no tenant in the token means no rows.
         modelBuilder.Entity<Order>()

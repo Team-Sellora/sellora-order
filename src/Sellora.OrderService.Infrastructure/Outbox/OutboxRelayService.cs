@@ -100,10 +100,8 @@ public sealed class OutboxRelayService(
                 !outbox.Any(earlier =>
                     earlier.MessageKey == message.MessageKey &&
                     earlier.PublishedAt == null &&
-                    (earlier.OccurredAt < message.OccurredAt ||
-                     (earlier.OccurredAt == message.OccurredAt && earlier.Ordinal < message.Ordinal))))
-            .OrderBy(message => message.OccurredAt)
-            .ThenBy(message => message.Ordinal)
+                    earlier.Sequence < message.Sequence))
+            .OrderBy(message => message.Sequence)
             .Select(message => message.OutboxId)
             .Take(_options.BatchSize)
             .ToListAsync(cancellationToken);
@@ -126,8 +124,7 @@ public sealed class OutboxRelayService(
         var leasedMessages = await outbox
             .AsNoTracking()
             .Where(message => message.LeaseId == leaseId)
-            .OrderBy(message => message.OccurredAt)
-            .ThenBy(message => message.Ordinal)
+            .OrderBy(message => message.Sequence)
             .ToListAsync(cancellationToken);
 
         var published = 0;

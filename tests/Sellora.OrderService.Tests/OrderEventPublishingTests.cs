@@ -87,8 +87,7 @@ public sealed class OrderEventPublishingTests
         await using var db = _fixture.CreateContext(_companyId);
         return await db.OutboxMessages
             .Where(message => message.AggregateId == orderId)
-            .OrderBy(message => message.OccurredAt)
-            .ThenBy(message => message.Ordinal)
+            .OrderBy(message => message.Sequence)
             .ToListAsync();
     }
 

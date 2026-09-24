@@ -7,6 +7,13 @@ namespace Sellora.OrderService.Infrastructure.Persistence.Configurations;
 /// <summary>Copied from sellora-organization, plus message_key and ordinal.</summary>
 public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<OutboxMessage>
 {
+    /// <summary>
+    /// Backing sequence for <see cref="OutboxMessage.Sequence"/>. The writer
+    /// fetches values from it explicitly so events written in one transaction
+    /// keep their enqueue order (see <c>EntityFrameworkOutboxWriter</c>).
+    /// </summary>
+    public const string SequenceName = "outbox_message_sequence_seq";
+
     public void Configure(EntityTypeBuilder<OutboxMessage> builder)
     {
         builder.ToTable("outbox_message");
@@ -15,6 +22,10 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
 
         builder.Property(message => message.OutboxId)
             .HasColumnName("outbox_id").HasColumnType("uuid").ValueGeneratedNever();
+        builder.Property(message => message.Sequence)
+            .HasColumnName("sequence")
+            .HasColumnType("bigint")
+            .ValueGeneratedNever();
         builder.Property(message => message.CompanyId)
             .HasColumnName("company_id").HasColumnType("uuid").IsRequired();
         builder.Property(message => message.AggregateType)
@@ -53,7 +64,9 @@ public sealed class OutboxMessageConfiguration : IEntityTypeConfiguration<Outbox
 
         // "Is there an earlier unpublished event for this order?" — checked
         // for every candidate, so it needs its own index.
-        builder.HasIndex(message => new { message.MessageKey, message.OccurredAt, message.Ordinal })
+        // "Is there an earlier unpublished event for this order?" — checked
+        // for every candidate, keyed on the true insertion order.
+        builder.HasIndex(message => new { message.MessageKey, message.Sequence })
             .HasDatabaseName("ix_outbox_message_key_order");
     }
 }
