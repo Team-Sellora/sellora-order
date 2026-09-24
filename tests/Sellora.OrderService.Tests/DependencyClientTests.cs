@@ -16,6 +16,48 @@ public sealed class DependencyClientTests
     private static HttpClient Http(HttpMessageHandler handler) =>
         new(handler) { BaseAddress = new Uri("http://dependency.test/") };
 
+    // Shape copied from sellora-organization's CallerScopeResponse.
+    [Fact]
+    public async Task Organization_scope_parses_the_real_response()
+    {
+        var rep = Guid.NewGuid();
+        var agency = Guid.NewGuid();
+        var province = Guid.NewGuid();
+        var handler = StubHttpHandler.Json(HttpStatusCode.OK, $$"""
+            {
+              "subject": "6c83c690-72bb-46ef-a8fb-5902303924a8",
+              "companyId": "{{Guid.NewGuid()}}",
+              "role": "SalesRep",
+              "staffProfileId": "{{rep}}",
+              "displayName": "Ruwan Dias",
+              "salesRepId": "{{rep}}",
+              "agencyId": "{{agency}}",
+              "territoryId": "{{Guid.NewGuid()}}",
+              "shopId": null,
+              "provinceIds": ["{{province}}"],
+              "agencyIds": ["{{agency}}"],
+              "territoryIds": [],
+              "shopIds": []
+            }
+            """);
+
+        var scope = await new OrganizationClient(Http(handler)).GetCallerScopeAsync(CancellationToken.None);
+
+        Assert.Equal(rep, scope!.SalesRepId);
+        Assert.Equal(agency, scope.AgencyId);
+        Assert.Null(scope.ShopId);
+        Assert.Equal(new[] { province }, scope.ProvinceIds);
+        Assert.Equal("/api/me/scope", handler.Requests.Single().Request.RequestUri!.AbsolutePath);
+    }
+
+    [Fact]
+    public async Task Organization_scope_is_null_when_the_caller_has_no_profile()
+    {
+        var handler = StubHttpHandler.Json(HttpStatusCode.NotFound, """{ "title": "Profile not found" }""");
+
+        Assert.Null(await new OrganizationClient(Http(handler)).GetCallerScopeAsync(CancellationToken.None));
+    }
+
     [Fact]
     public async Task Organization_verify_parses_the_real_response()
     {
