@@ -82,6 +82,14 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(order => order.CancelledAt).HasColumnName("cancelled_at").HasColumnType("timestamp with time zone");
         builder.Property(order => order.CancellationReason).HasColumnName("cancellation_reason").HasMaxLength(200);
 
+        // US-E4-4: contact snapshot carried by every order event.
+        builder.Property(order => order.ShopName).HasColumnName("shop_name").HasMaxLength(200);
+        builder.Property(order => order.ShopOwnerName).HasColumnName("shop_owner_name").HasMaxLength(200);
+        builder.Property(order => order.ShopOwnerEmail).HasColumnName("shop_owner_email").HasMaxLength(320);
+        builder.Property(order => order.AgencyName).HasColumnName("agency_name").HasMaxLength(200);
+        builder.Property(order => order.AgencyEmail).HasColumnName("agency_email").HasMaxLength(320);
+        builder.Property(order => order.SalesRepName).HasColumnName("sales_rep_name").HasMaxLength(200);
+
         builder.HasMany(order => order.CheckIns)
             .WithOne()
             .HasForeignKey(checkIn => checkIn.OrderId)

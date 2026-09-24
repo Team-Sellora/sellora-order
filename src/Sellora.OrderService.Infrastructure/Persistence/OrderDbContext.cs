@@ -24,6 +24,13 @@ public class OrderDbContext : DbContext
 
     public DbSet<Payment> Payments => Set<Payment>();
 
+    /// <summary>
+    /// Events committed with the order change they describe (US-E4-4).
+    /// No tenant filter: the relay reads every tenant's rows, and nothing
+    /// else queries this table.
+    /// </summary>
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
