@@ -69,3 +69,11 @@ public sealed record InventoryOwnerResponse(
     string OwnerType,
     Guid ExternalOwnerId,
     string DisplayName);
+
+/// <summary>sellora-inventory: Application/Stock/StockAvailability.cs</summary>
+public sealed record StockAvailabilityResponse(
+    Guid ProductId,
+    Guid? BatchId,
+    int RequestedQuantity,
+    int AvailableQuantity,
+    bool IsAvailable);

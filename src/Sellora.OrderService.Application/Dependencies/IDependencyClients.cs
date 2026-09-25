@@ -74,6 +74,16 @@ public interface IInventoryClient
         Guid reservationId,
         CancellationToken cancellationToken);
 
+    /// <summary>
+    /// POST /api/stock/availability — how much of each product this owner
+    /// can hand over now (on hand minus held), summed across batches.
+    /// US-E4-6 checks a rep's van return against it.
+    /// </summary>
+    Task<IReadOnlyCollection<StockAvailabilityResponse>> CheckAvailabilityAsync(
+        Guid inventoryOwnerId,
+        IReadOnlyCollection<BasketLine> lines,
+        CancellationToken cancellationToken);
+
     /// <summary>POST /api/stock/reservations/{id}/release — the saga's compensation.</summary>
     Task<bool> ReleaseReservationAsync(
         Guid reservationId,

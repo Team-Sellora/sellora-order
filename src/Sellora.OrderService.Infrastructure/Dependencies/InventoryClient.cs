@@ -71,6 +71,34 @@ public sealed class InventoryClient : IInventoryClient
             .FirstOrDefault();
     }
 
+    public async Task<IReadOnlyCollection<StockAvailabilityResponse>> CheckAvailabilityAsync(
+        Guid inventoryOwnerId,
+        IReadOnlyCollection<BasketLine> lines,
+        CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "api/stock/availability")
+        {
+            // Matches Inventory's ReserveStockRequestBody (its availability body).
+            Content = JsonContent.Create(
+                new { InventoryOwnerId = inventoryOwnerId, Lines = ToBody(lines) },
+                options: DependencyHttp.Json)
+        };
+
+        using var response = await DependencyHttp.SendAsync(
+            _http, request, Dependency.Inventory, cancellationToken);
+
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new DependencyRejectedException(
+                Dependency.Inventory,
+                response.StatusCode,
+                await DependencyHttp.ReadErrorAsync(response, cancellationToken));
+        }
+
+        return await DependencyHttp.ReadAsync<IReadOnlyCollection<StockAvailabilityResponse>>(
+            response, Dependency.Inventory, cancellationToken);
+    }
+
     // Inventory's exact 409 messages (StockReservationService.ConfirmAsync).
     // Matched by text because the 409 body carries no code; the
     // InventoryClient tests pin both so a wording change fails CI here.
