@@ -2,11 +2,12 @@ using System.Text.Json;
 using Sellora.OrderService.Application.Events;
 using Sellora.OrderService.Application.Outbox;
 using Sellora.OrderService.Domain.Entities;
+using Sellora.OrderService.Domain.Orders;
 
 namespace Sellora.OrderService.Infrastructure.Outbox;
 
 /// <summary>
-/// Builds the four order events from the aggregate and enqueues them. One
+/// Builds the order events from the aggregate and enqueues them. One
 /// instance per request (scoped), so events written in one transaction get
 /// increasing ordinals and are published in the order they were written.
 /// </summary>
@@ -113,7 +114,10 @@ public sealed class OrderEventOutbox(IOutboxWriter writer, ICorrelationIdAccesso
         });
     }
 
-    public void OrderCancelled(Order order, DateTimeOffset occurredAt) =>
+    public void OrderCancelled(Order order, DateTimeOffset occurredAt)
+    {
+        var (source, cancelledBy) = Cancellation(order);
+
         Enqueue(order, occurredAt, context => new OrderCancelledEvent
         {
             EventId = context.EventId,
@@ -138,8 +142,62 @@ public sealed class OrderEventOutbox(IOutboxWriter writer, ICorrelationIdAccesso
             Total = order.Total,
             CheckoutLocation = CheckoutLocation(order),
             CancelledAt = order.CancelledAt ?? occurredAt,
-            Reason = order.CancellationReason
+            Reason = order.CancellationReason,
+            Source = source,
+            CancelledBy = cancelledBy
         });
+    }
+
+    public void OrderApproved(Order order, OrderDecision approval, DateTimeOffset occurredAt) =>
+        Enqueue(order, occurredAt, context => new OrderApprovedEvent
+        {
+            EventId = context.EventId,
+            EventType = OrderEventTypes.OrderApproved,
+            CompanyId = order.CompanyId,
+            EntityId = order.OrderId,
+            OrderId = order.OrderId,
+            OrderReference = order.OrderReference,
+            ReservationId = order.ReservationId,
+            OccurredAt = occurredAt,
+            CorrelationId = context.CorrelationId,
+            FulfilmentType = order.FulfilmentType.ToString(),
+            Status = order.Status.ToString(),
+            OrderDate = order.OrderDate,
+            Shop = Shop(order),
+            Agency = Agency(order),
+            TerritoryId = order.TerritoryId,
+            ProvinceId = order.ProvinceId,
+            SalesRep = Rep(order),
+            Lines = Lines(order),
+            Subtotal = order.Subtotal,
+            Total = order.Total,
+            CheckoutLocation = CheckoutLocation(order),
+            ApprovedAt = approval.DecidedAt,
+            ApprovedBy = new EventActor(approval.ActorUserId, approval.ActorRole)
+        });
+
+    /// <summary>
+    /// Who cancelled, read from the latest rejection or shop cancellation.
+    /// No such decision means the system cancelled it (expired stock hold).
+    /// </summary>
+    private static (string Source, EventActor? CancelledBy) Cancellation(Order order)
+    {
+        var decision = order.Decisions
+            .Where(candidate => candidate.Kind is OrderDecisionKind.Rejected or OrderDecisionKind.CancelledByShop)
+            .OrderByDescending(candidate => candidate.DecidedAt)
+            .FirstOrDefault();
+
+        if (decision is null)
+        {
+            return (OrderCancellationSources.StockHoldExpired, null);
+        }
+
+        var source = decision.Kind == OrderDecisionKind.Rejected
+            ? OrderCancellationSources.AgencyRejection
+            : OrderCancellationSources.ShopCancellation;
+
+        return (source, new EventActor(decision.ActorUserId, decision.ActorRole));
+    }
 
     private void Enqueue<TEvent>(
         Order order,

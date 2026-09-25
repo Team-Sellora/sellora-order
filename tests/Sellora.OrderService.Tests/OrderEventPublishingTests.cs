@@ -102,25 +102,22 @@ public sealed class OrderEventPublishingTests
     }
 
     [Fact]
-    public async Task Scheduled_delivery_publishes_placed_then_confirmed_in_one_transaction()
+    public async Task Scheduled_delivery_publishes_only_placed_until_the_agency_approves()
     {
         var soap = _catalog.Add("Sunlight Soap 100g", 120m);
 
         var result = await PlaceAsync(OrderFulfilmentType.ScheduledDelivery, new BasketLine(soap.ProductId, 2));
-        var events = await EventsAsync(result.Order!.OrderId);
+        var placed = Assert.Single(await EventsAsync(result.Order!.OrderId));
 
-        Assert.Equal(new[] { "OrderPlaced", "OrderConfirmed" }, events.Select(e => e.EventType));
-        Assert.All(events, e =>
-        {
-            Assert.Equal(result.Order.OrderReference, e.MessageKey);
-            Assert.Equal(Correlation, e.CorrelationId);
-            Assert.Null(e.PublishedAt);
-        });
-        Assert.Equal(events[0].OccurredAt, events[1].OccurredAt);
-        Assert.True(events[0].Ordinal < events[1].Ordinal);
+        // US-E4-5: OrderConfirmed now comes with the approval, not placement.
+        Assert.Equal("OrderPlaced", placed.EventType);
+        Assert.Equal(result.Order.OrderReference, placed.MessageKey);
+        Assert.Equal(Correlation, placed.CorrelationId);
+        Assert.Null(placed.PublishedAt);
+        Assert.Equal("PendingApproval", Payload(placed).GetProperty("status").GetString());
 
         // No GPS in the scheduled-delivery flow, so no checkout location.
-        Assert.Equal(JsonValueKind.Null, Payload(events[1]).GetProperty("checkoutLocation").ValueKind);
+        Assert.Equal(JsonValueKind.Null, Payload(placed).GetProperty("checkoutLocation").ValueKind);
     }
 
     [Fact]
@@ -215,6 +212,9 @@ public sealed class OrderEventPublishingTests
         var payload = Payload(cancelled);
         Assert.Equal("Cancelled", payload.GetProperty("status").GetString());
         Assert.False(string.IsNullOrWhiteSpace(payload.GetProperty("reason").GetString()));
+        // US-E4-5: nobody decided this one — the system did.
+        Assert.Equal("StockHoldExpired", payload.GetProperty("source").GetString());
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("cancelledBy").ValueKind);
     }
 
     // Inventory's consumer contract, copied from sellora-inventory

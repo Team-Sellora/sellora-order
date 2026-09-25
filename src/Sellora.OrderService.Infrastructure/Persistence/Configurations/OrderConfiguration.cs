@@ -80,7 +80,22 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
         builder.Property(order => order.CheckoutLongitude).HasColumnName("checkout_longitude");
         builder.Property(order => order.CheckedOutAt).HasColumnName("checked_out_at").HasColumnType("timestamp with time zone");
         builder.Property(order => order.CancelledAt).HasColumnName("cancelled_at").HasColumnType("timestamp with time zone");
-        builder.Property(order => order.CancellationReason).HasColumnName("cancellation_reason").HasMaxLength(200);
+        // US-E4-5: an agency's rejection reason can be longer than the
+        // stock-hold message this column was sized for.
+        builder.Property(order => order.CancellationReason)
+            .HasColumnName("cancellation_reason")
+            .HasMaxLength(Order.MaxDecisionReasonLength);
+
+        // US-E4-5: when the order became binding (window start) and who
+        // cancelled it.
+        builder.Property(order => order.ConfirmedAt).HasColumnName("confirmed_at").HasColumnType("timestamp with time zone");
+        builder.Property(order => order.CancelledBy).HasColumnName("cancelled_by").HasMaxLength(OrderDecision.MaxActorLength);
+
+        // US-E4-5: PostgreSQL's xmin system column as the concurrency token,
+        // so an approval, cancellation or payment that loaded a stale order
+        // fails instead of overwriting a decision taken in between. xmin is
+        // a system column: the migration adds nothing to the table.
+        builder.Property(order => order.Version).IsRowVersion();
 
         // US-E4-4: contact snapshot carried by every order event.
         builder.Property(order => order.ShopName).HasColumnName("shop_name").HasMaxLength(200);
@@ -98,6 +113,16 @@ public sealed class OrderConfiguration : IEntityTypeConfiguration<Order>
 
         builder.Navigation(order => order.CheckIns)
             .HasField("_checkIns")
+            .UsePropertyAccessMode(PropertyAccessMode.Field);
+
+        builder.HasMany(order => order.Decisions)
+            .WithOne()
+            .HasForeignKey(decision => decision.OrderId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("fk_order_decision_customer_order");
+
+        builder.Navigation(order => order.Decisions)
+            .HasField("_decisions")
             .UsePropertyAccessMode(PropertyAccessMode.Field);
 
         builder.HasOne(order => order.Payment)
@@ -245,5 +270,40 @@ public sealed class PaymentConfiguration : IEntityTypeConfiguration<Payment>
             .HasForeignKey(payment => payment.CheckInId)
             .OnDelete(DeleteBehavior.Restrict)
             .HasConstraintName("fk_payment_order_check_in");
+    }
+}
+
+/// <summary>US-E4-5: append-only trail of approvals, rejections and cancellations.</summary>
+public sealed class OrderDecisionConfiguration : IEntityTypeConfiguration<OrderDecision>
+{
+    public void Configure(EntityTypeBuilder<OrderDecision> builder)
+    {
+        builder.ToTable("order_decision", table =>
+        {
+            table.HasCheckConstraint(
+                "ck_order_decision_kind",
+                "kind IN ('Approved', 'Rejected', 'CancelledByShop')");
+
+            // Database-level backstop for "a rejection always has a reason".
+            table.HasCheckConstraint(
+                "ck_order_decision_rejection_reason",
+                "kind <> 'Rejected' OR (reason IS NOT NULL AND length(trim(reason)) > 0)");
+        });
+
+        builder.HasKey(decision => decision.OrderDecisionId).HasName("pk_order_decision");
+
+        builder.Property(decision => decision.OrderDecisionId).HasColumnName("order_decision_id").ValueGeneratedNever();
+        builder.Property(decision => decision.OrderId).HasColumnName("order_id").IsRequired();
+        builder.Property(decision => decision.CompanyId).HasColumnName("company_id").IsRequired();
+        builder.Property(decision => decision.Kind).HasColumnName("kind").HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(decision => decision.ActorUserId).HasColumnName("actor_user_id").HasMaxLength(OrderDecision.MaxActorLength).IsRequired();
+        builder.Property(decision => decision.ActorRole).HasColumnName("actor_role").HasMaxLength(OrderDecision.MaxActorLength).IsRequired();
+        builder.Property(decision => decision.Reason).HasColumnName("reason").HasMaxLength(Order.MaxDecisionReasonLength);
+        builder.Property(decision => decision.StatusBefore).HasColumnName("status_before").HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(decision => decision.StatusAfter).HasColumnName("status_after").HasConversion<string>().HasMaxLength(30).IsRequired();
+        builder.Property(decision => decision.DecidedAt).HasColumnName("decided_at").HasColumnType("timestamp with time zone").IsRequired();
+
+        builder.HasIndex(decision => new { decision.OrderId, decision.DecidedAt })
+            .HasDatabaseName("ix_order_decision_order_decided");
     }
 }

@@ -208,7 +208,7 @@ public sealed class OrderSagaTests
     }
 
     [Fact]
-    public async Task Scheduled_delivery_is_confirmed_and_its_stock_is_sold()
+    public async Task Scheduled_delivery_waits_for_approval_with_its_stock_committed()
     {
         var soap = _catalog.Add("Soap", 100m);
 
@@ -216,8 +216,11 @@ public sealed class OrderSagaTests
 
         Assert.Equal(CreateOrderOutcome.Created, result.Outcome);
         Assert.Equal("ScheduledDelivery", result.Order!.FulfilmentType);
-        Assert.Equal("Confirmed", result.Order.Status);
-        // Agency stock, and the reservation is turned into a sale now.
+        // US-E4-5: the agency approves it before it becomes binding.
+        Assert.Equal("PendingApproval", result.Order.Status);
+        Assert.Null(result.Order.ConfirmedAt);
+        // Agency stock, committed now so it cannot be sold twice while the
+        // agency decides; a rejection returns it.
         Assert.Equal(new[] { _inventory.LastReservationId!.Value }, _inventory.Confirmed);
         Assert.Null(_inventory.LastReservedOwnerId);
     }

@@ -15,16 +15,26 @@ public enum OrderStatus
     AwaitingCheckout = 1,
 
     /// <summary>
-    /// US-E4-2: a scheduled delivery order, confirmed as soon as it is
-    /// verified, and an immediate cash sale after payment is recorded
-    /// (US-E4-3). Its stock reservation is confirmed (held becomes sold).
+    /// Binding. A scheduled delivery once its agency approves it (US-E4-5),
+    /// and an immediate cash sale once payment is recorded (US-E4-3).
+    /// <see cref="Entities.Order.ConfirmedAt"/> records when, and the shop's
+    /// cancellation window runs from that moment.
     /// </summary>
     Confirmed = 2,
 
-    /// <summary>US-E4-5: cancelled by the shop or rejected on approval; stock released.</summary>
+    /// <summary>
+    /// Cancelled by the shop, rejected by the agency (US-E4-5), or dropped
+    /// because the stock hold expired before checkout (US-E4-3). The
+    /// OrderCancelled event tells Inventory to return the stock.
+    /// </summary>
     Cancelled = 3,
 
-    /// <summary>US-E4-5: held for an approver before it can be confirmed.</summary>
+    /// <summary>
+    /// US-E4-5: a scheduled delivery that passed verification and waits for
+    /// its agency to approve or reject it. Its stock is already committed
+    /// (sold in Inventory) so the agency cannot oversell while deciding; a
+    /// rejection or cancellation puts it back.
+    /// </summary>
     PendingApproval = 4
 }
 

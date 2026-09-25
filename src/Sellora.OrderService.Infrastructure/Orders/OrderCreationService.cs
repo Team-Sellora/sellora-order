@@ -256,13 +256,11 @@ public sealed class OrderCreationService : IOrderCreationService
                 _caller.DisplayName));
 
             // Same SaveChanges as the order: both commit or neither does, so
-            // an order can never exist without its events.
+            // an order can never exist without its events. Nothing is
+            // confirmed at placement any more: a cash sale waits for checkout
+            // and a scheduled delivery for its agency's approval (US-E4-5),
+            // and OrderConfirmed is written when that happens.
             _events.OrderPlaced(order, acceptedAt);
-
-            if (order.Status == OrderStatus.Confirmed)
-            {
-                _events.OrderConfirmed(order, acceptedAt);
-            }
 
             _db.Orders.Add(order);
             await _db.SaveChangesAsync(cancellationToken);
@@ -272,9 +270,12 @@ public sealed class OrderCreationService : IOrderCreationService
                 order.OrderReference, order.OrderId, order.ShopId, salesRepId,
                 order.FulfilmentType, order.Status, reservation.ReservationId);
 
-            // A scheduled delivery is done being verified, so its stock is
-            // sold now. A cash sale keeps the stock merely held until the rep
-            // checks in and takes payment (US-E4-3).
+            // A scheduled delivery's stock is committed now, while it waits
+            // for approval: Inventory's hold expires in minutes, far sooner
+            // than an agency decides, and the agency must not be able to sell
+            // the same stock twice meanwhile. A rejection or cancellation
+            // returns it through the OrderCancelled event (US-E4-5). A cash
+            // sale keeps the stock merely held until checkout (US-E4-3).
             if (order.FulfilmentType == OrderFulfilmentType.ScheduledDelivery &&
                 await _inventory.ConfirmReservationAsync(reservation.ReservationId, CancellationToken.None)
                     is not (ReservationConfirmOutcome.Confirmed or ReservationConfirmOutcome.AlreadyConfirmed))
@@ -282,8 +283,8 @@ public sealed class OrderCreationService : IOrderCreationService
                 // The order stands; the stock is still held rather than sold,
                 // so nothing is oversold. Needs an operator to reconcile.
                 _logger.LogError(
-                    "Order {OrderReference} is Confirmed but reservation {ReservationId} could not be confirmed; stock is still held",
-                    order.OrderReference, reservation.ReservationId);
+                    "Order {OrderReference} is {Status} but reservation {ReservationId} could not be committed; stock is still held",
+                    order.OrderReference, order.Status, reservation.ReservationId);
             }
 
             return CreateOrderResult.Created(OrderResponse.From(order));

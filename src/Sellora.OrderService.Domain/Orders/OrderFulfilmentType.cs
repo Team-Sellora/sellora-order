@@ -15,7 +15,8 @@ public enum OrderFulfilmentType
 
     /// <summary>
     /// The shop takes the order on credit; the agency delivers later.
-    /// Confirmed as soon as verification passes.
+    /// Goes to <see cref="OrderStatus.PendingApproval"/> until the agency
+    /// approves it (US-E4-5).
     /// </summary>
     ScheduledDelivery = 2
 }

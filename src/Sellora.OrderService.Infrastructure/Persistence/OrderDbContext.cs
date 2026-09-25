@@ -25,6 +25,9 @@ public class OrderDbContext : DbContext
 
     public DbSet<Payment> Payments => Set<Payment>();
 
+    /// <summary>US-E4-5: approvals, rejections and shop cancellations.</summary>
+    public DbSet<OrderDecision> OrderDecisions => Set<OrderDecision>();
+
     /// <summary>
     /// Events committed with the order change they describe (US-E4-4).
     /// No tenant filter: the relay reads every tenant's rows, and nothing
@@ -58,5 +61,10 @@ public class OrderDbContext : DbContext
             .HasQueryFilter(payment =>
                 _tenantContext.CompanyId != null &&
                 payment.CompanyId == _tenantContext.CompanyId);
+
+        modelBuilder.Entity<OrderDecision>()
+            .HasQueryFilter(decision =>
+                _tenantContext.CompanyId != null &&
+                decision.CompanyId == _tenantContext.CompanyId);
     }
 }

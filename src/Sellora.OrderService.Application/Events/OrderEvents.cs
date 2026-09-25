@@ -22,6 +22,22 @@ public static class OrderEventTypes
     public const string PaymentRecorded = "PaymentRecorded";
 
     public const string OrderCancelled = "OrderCancelled";
+
+    /// <summary>US-E4-5: the agency approved a scheduled delivery.</summary>
+    public const string OrderApproved = "OrderApproved";
+}
+
+/// <summary>
+/// US-E4-5: values of <see cref="OrderCancelledEvent.Source"/>, so a consumer
+/// can word a notification without parsing the free-text reason.
+/// </summary>
+public static class OrderCancellationSources
+{
+    public const string ShopCancellation = "ShopCancellation";
+
+    public const string AgencyRejection = "AgencyRejection";
+
+    public const string StockHoldExpired = "StockHoldExpired";
 }
 
 /// <summary>Where the rep verifiably was — the evidence the fraud control rests on.</summary>
@@ -37,6 +53,9 @@ public sealed record EventShop(Guid ShopId, string? Name, string? OwnerName, str
 public sealed record EventAgency(Guid AgencyId, string? Name, string? Email);
 
 public sealed record EventSalesRep(Guid SalesRepId, string? Name);
+
+/// <summary>US-E4-5: who took a decision — identity-provider user ID and role.</summary>
+public sealed record EventActor(string UserId, string Role);
 
 public sealed record EventOrderLine(
     Guid ProductId,
@@ -131,6 +150,24 @@ public sealed record OrderCancelledEvent : OrderEventBase
     public required DateTimeOffset CancelledAt { get; init; }
 
     public string? Reason { get; init; }
+
+    /// <summary>US-E4-5: one of <see cref="OrderCancellationSources"/>.</summary>
+    public required string Source { get; init; }
+
+    /// <summary>US-E4-5: the shop owner or agency operator; null when the system cancelled.</summary>
+    public EventActor? CancelledBy { get; init; }
+}
+
+/// <summary>
+/// US-E4-5: the owning agency approved a scheduled delivery. Always followed
+/// by OrderConfirmed in the same transaction, because approval is what makes
+/// a scheduled delivery binding.
+/// </summary>
+public sealed record OrderApprovedEvent : OrderEventBase
+{
+    public required DateTimeOffset ApprovedAt { get; init; }
+
+    public required EventActor ApprovedBy { get; init; }
 }
 
 /// <summary>
@@ -150,4 +187,9 @@ public interface IOrderEventOutbox
         DateTimeOffset occurredAt);
 
     void OrderCancelled(Sellora.OrderService.Domain.Entities.Order order, DateTimeOffset occurredAt);
+
+    void OrderApproved(
+        Sellora.OrderService.Domain.Entities.Order order,
+        Sellora.OrderService.Domain.Entities.OrderDecision approval,
+        DateTimeOffset occurredAt);
 }
