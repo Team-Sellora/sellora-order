@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Options;
 using Sellora.OrderService.Application.Identity;
 using Sellora.OrderService.Application.Orders;
 using Sellora.OrderService.Infrastructure.Orders;
@@ -17,10 +18,13 @@ public sealed class OrderReadScopingTests
         return (await TestOrders.SeedAsync(db, companyId, repId, placement)).OrderId;
     }
 
+    private static OrderReadService Reads(Sellora.OrderService.Infrastructure.Persistence.OrderDbContext db, CallerStub caller) =>
+        new(db, caller, TimeProvider.System, Options.Create(new CancellationOptions()));
+
     private async Task<IReadOnlyList<Guid>> ListIdsAsync(Guid companyId, CallerStub caller)
     {
         await using var db = _fixture.CreateContext(companyId);
-        var page = await new OrderReadService(db, caller)
+        var page = await Reads(db, caller)
             .ListAsync(new OrderListQuery(1, 200), CancellationToken.None);
         return page.Items.Select(item => item.OrderId).ToList();
     }
@@ -67,7 +71,7 @@ public sealed class OrderReadScopingTests
         async Task<OrderResponse?> GetAs(Guid tenant, CallerStub caller)
         {
             await using var db = _fixture.CreateContext(tenant);
-            return await new OrderReadService(db, caller).GetAsync(orderId, CancellationToken.None);
+            return await Reads(db, caller).GetAsync(orderId, CancellationToken.None);
         }
 
         var own = await GetAs(companyId, new CallerStub { Role = SelloraRoles.SalesRep, SalesRepId = repA });

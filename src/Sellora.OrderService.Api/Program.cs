@@ -105,6 +105,12 @@ if (!builder.Environment.IsEnvironment("Testing"))
 builder.Services.AddScoped<IOrderCreationService, OrderCreationService>();
 builder.Services.AddScoped<IOrderReadService, OrderReadService>();
 
+// US-E4-5: agency approval and the shop's cancellation window (minutes from
+// configuration, default 60).
+builder.Services.Configure<CancellationOptions>(builder.Configuration.GetSection(CancellationOptions.Section));
+builder.Services.AddScoped<IOrderApprovalService, OrderApprovalService>();
+builder.Services.AddScoped<IOrderCancellationService, OrderCancellationService>();
+
 builder.Services.AddMemoryCache();
 builder.Services.Configure<CallerScopeOptions>(builder.Configuration.GetSection(CallerScopeOptions.Section));
 

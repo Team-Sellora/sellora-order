@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Sellora.OrderService.Application.Identity;
 using Sellora.OrderService.Application.Orders;
 using Sellora.OrderService.Infrastructure.Persistence;
@@ -9,11 +10,19 @@ public sealed class OrderReadService : IOrderReadService
 {
     private readonly OrderDbContext _db;
     private readonly ICurrentUserContext _caller;
+    private readonly TimeProvider _clock;
+    private readonly TimeSpan _cancellationWindow;
 
-    public OrderReadService(OrderDbContext db, ICurrentUserContext caller)
+    public OrderReadService(
+        OrderDbContext db,
+        ICurrentUserContext caller,
+        TimeProvider clock,
+        IOptions<CancellationOptions> cancellation)
     {
         _db = db;
         _caller = caller;
+        _clock = clock;
+        _cancellationWindow = cancellation.Value.Window;
     }
 
     public async Task<PagedResponse<OrderSummaryResponse>> ListAsync(
@@ -59,9 +68,12 @@ public sealed class OrderReadService : IOrderReadService
             .Include(order => order.VerificationSteps)
             .Include(order => order.CheckIns)
             .Include(order => order.Payment)
+            .Include(order => order.Decisions)
             .ApplyCallerScope(_caller)
             .SingleOrDefaultAsync(order => order.OrderId == orderId, cancellationToken);
 
-        return order is null ? null : OrderResponse.From(order);
+        // US-E4-5: the window as this server sees it now, so the shop owner's
+        // view shows the remaining time without trusting the device clock.
+        return order is null ? null : OrderResponse.From(order, _clock.GetUtcNow(), _cancellationWindow);
     }
 }

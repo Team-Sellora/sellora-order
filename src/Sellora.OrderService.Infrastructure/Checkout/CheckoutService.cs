@@ -201,6 +201,19 @@ public sealed class CheckoutService : ICheckoutService
         {
             return PaymentResult.Failed(CheckoutOutcome.NotAwaitingCheckout, "A payment has already been recorded for this order.");
         }
+        catch (DbUpdateConcurrencyException)
+        {
+            // US-E4-5: the shop cancelled the order while the rep was paying.
+            // Its OrderCancelled event makes Inventory return the stock that
+            // was just confirmed, so nothing is lost; the rep is told why.
+            _logger.LogWarning(
+                "Payment for order {OrderReference} not saved: the order changed during checkout (likely cancelled by the shop)",
+                order.OrderReference);
+
+            return PaymentResult.Failed(
+                CheckoutOutcome.NotAwaitingCheckout,
+                "This order was changed while you were recording the payment (the shop may have cancelled it). No payment was recorded; reload the order.");
+        }
         catch (Exception exception)
         {
             _logger.LogError(
