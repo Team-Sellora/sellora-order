@@ -20,18 +20,21 @@ Published by **sellora-order** through a transactional outbox.
 
 | Transition | Events, in order |
 |---|---|
-| Scheduled delivery accepted | `OrderPlaced`, `OrderConfirmed` |
+| Scheduled delivery accepted (now awaits agency approval, US-E4-5) | `OrderPlaced` |
+| Scheduled delivery approved by the agency | `OrderApproved`, `OrderConfirmed` |
+| Scheduled delivery rejected by the agency | `OrderCancelled` (`source: AgencyRejection`) |
+| Order cancelled by the shop owner inside the window | `OrderCancelled` (`source: ShopCancellation`) |
 | Cash sale accepted (stock held in the van) | `OrderPlaced` |
 | Cash sale checked out and paid | `OrderConfirmed`, `PaymentRecorded` |
-| Cash sale's stock hold expired before checkout | `OrderCancelled` |
-| Order rejected by verification, failed check-in, failed payment | *nothing* |
+| Cash sale's stock hold expired before checkout | `OrderCancelled` (`source: StockHoldExpired`) |
+| Order rejected by verification, failed check-in, failed payment, rejection without a reason, cancellation outside the window | *nothing* |
 
 ## Fields on every event
 
 | Field | Type | Notes |
 |---|---|---|
 | `eventId` | uuid | Unique per event; also the `event-id` header. Deduplicate on it. |
-| `eventType` | string | `OrderPlaced` · `OrderConfirmed` · `PaymentRecorded` · `OrderCancelled` |
+| `eventType` | string | `OrderPlaced` · `OrderConfirmed` · `PaymentRecorded` · `OrderCancelled` · `OrderApproved` |
 | `schemaVersion` | string | `"1.0"` |
 | `companyId` | uuid | Tenant |
 | `entityId` | uuid | The order ID (name matches Inventory's envelope) |
@@ -64,7 +67,14 @@ Names and emails are snapshots taken when the order was placed. They may be `nul
 - `payment`: `paymentId`, `amount`, `method` (`"Cash"`), `recordedAt`, `checkInId`
 - `checkInLocation`: `latitude`, `longitude`, `distanceMeters`, `accuracyMeters`, `checkedInAt` — the accepted check-in that permitted the payment
 
-**`OrderCancelled`** — `cancelledAt` (timestamp), `reason` (string).
+**`OrderCancelled`**
+- `cancelledAt` (timestamp), `reason` (string)
+- `source` (string, US-E4-5): `ShopCancellation` · `AgencyRejection` · `StockHoldExpired`
+- `cancelledBy` (object \| null, US-E4-5): `userId` (identity-provider `sub`), `role`. Null when the system cancelled.
+
+**`OrderApproved`** (US-E4-5) — `approvedAt` (timestamp), `approvedBy` (`userId`, `role`). Always followed by `OrderConfirmed` in the same transaction.
+
+Both US-E4-5 additions are additive, so the schema stays `1.0`.
 
 ## Example — `PaymentRecorded`
 
@@ -104,8 +114,8 @@ Names and emails are snapshots taken when the order was placed. They may be `nul
 
 | Consumer | Uses |
 |---|---|
-| **Inventory** (existing) | `OrderConfirmed` → confirms the reservation; `OrderCancelled` → releases it. Both are no-ops if already applied, so the synchronous confirm Order also makes is harmless. |
-| **Notification** (US-E5-1) | All four; the shop and agency emails come from `shop.ownerEmail` and `agency.email`. |
+| **Inventory** (existing) | `OrderConfirmed` → confirms the reservation; `OrderCancelled` → releases a held reservation, or returns the stock of a confirmed one (US-E4-5 — a scheduled delivery's stock is committed at placement). Both are no-ops if already applied. Ignores `OrderApproved`. |
+| **Notification** (US-E5-1) | All of them; the shop and agency emails come from `shop.ownerEmail` and `agency.email`. `source` says who to tell about a cancellation. |
 | **Delivery** (E6) | `OrderConfirmed` for scheduled deliveries. |
 | **Audit** (E7) | All four, including the location evidence. |
 
