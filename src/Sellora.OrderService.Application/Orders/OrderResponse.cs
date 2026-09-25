@@ -1,5 +1,6 @@
 using Sellora.OrderService.Application.Checkout;
 using Sellora.OrderService.Domain.Entities;
+using Sellora.OrderService.Domain.Orders;
 
 namespace Sellora.OrderService.Application.Orders;
 
@@ -33,9 +34,20 @@ public sealed record OrderResponse(
     Guid ReservationId,
     IReadOnlyList<OrderLineResponse> Lines,
     IReadOnlyList<OrderVerificationStepResponse> VerificationSteps,
-    OrderCheckoutResponse? Checkout = null)
+    OrderCheckoutResponse? Checkout = null,
+    DateTimeOffset? ConfirmedAt = null,
+    OrderApprovalResponse? Approval = null,
+    OrderCancellationWindowResponse? Cancellation = null,
+    IReadOnlyList<OrderDecisionResponse>? Decisions = null)
 {
-    public static OrderResponse From(Order order) => new(
+    /// <param name="now">
+    /// With <paramref name="cancellationWindow"/>, adds the shop's
+    /// cancellation window as the server sees it at this moment (US-E4-5).
+    /// </param>
+    public static OrderResponse From(
+        Order order,
+        DateTimeOffset? now = null,
+        TimeSpan? cancellationWindow = null) => new(
         order.OrderId,
         order.OrderReference,
         order.ShopId,
@@ -67,7 +79,97 @@ public sealed record OrderResponse(
                 step.Detail,
                 step.RecordedAt))
             .ToList(),
-        OrderCheckoutResponse.From(order));
+        OrderCheckoutResponse.From(order),
+        order.ConfirmedAt,
+        OrderApprovalResponse.From(order),
+        now is { } checkedAt && cancellationWindow is { } window
+            ? OrderCancellationWindowResponse.From(order.GetCancellationWindow(checkedAt, window), checkedAt)
+            : null,
+        order.Decisions
+            .OrderBy(decision => decision.DecidedAt)
+            .Select(OrderDecisionResponse.From)
+            .ToList());
+}
+
+/// <summary>US-E4-5: one approval, rejection or cancellation, with who, when and why.</summary>
+public sealed record OrderDecisionResponse(
+    Guid OrderDecisionId,
+    string Decision,
+    string ActorUserId,
+    string ActorRole,
+    string? Reason,
+    string StatusBefore,
+    string StatusAfter,
+    DateTimeOffset DecidedAt)
+{
+    public static OrderDecisionResponse From(OrderDecision decision) => new(
+        decision.OrderDecisionId,
+        decision.Kind.ToString(),
+        decision.ActorUserId,
+        decision.ActorRole,
+        decision.Reason,
+        decision.StatusBefore.ToString(),
+        decision.StatusAfter.ToString(),
+        decision.DecidedAt);
+}
+
+/// <summary>
+/// US-E4-5: where a scheduled delivery stands with its agency. Null for a
+/// cash sale, which is never approved.
+/// </summary>
+/// <param name="State">Pending, Approved, Rejected or NotDecided.</param>
+public sealed record OrderApprovalResponse(
+    string State,
+    string? DecidedBy,
+    string? DecidedByRole,
+    DateTimeOffset? DecidedAt,
+    string? Reason)
+{
+    public static OrderApprovalResponse? From(Order order)
+    {
+        if (order.FulfilmentType != OrderFulfilmentType.ScheduledDelivery)
+        {
+            return null;
+        }
+
+        if (order.ApprovalDecision is { } decision)
+        {
+            return new OrderApprovalResponse(
+                decision.Kind.ToString(), decision.ActorUserId, decision.ActorRole, decision.DecidedAt, decision.Reason);
+        }
+
+        // NotDecided: withdrawn by the shop before the agency decided, or
+        // confirmed before approvals existed.
+        return new OrderApprovalResponse(
+            order.Status == OrderStatus.PendingApproval ? "Pending" : "NotDecided", null, null, null, null);
+    }
+}
+
+/// <summary>
+/// US-E4-5: the shop's cancellation window, computed by the server at
+/// <see cref="CheckedAt"/>. A client counts <see cref="RemainingSeconds"/>
+/// down from when it received the response, so its own clock never decides
+/// anything; the cancel endpoint re-checks on the server regardless.
+/// </summary>
+public sealed record OrderCancellationWindowResponse(
+    bool CanCancel,
+    DateTimeOffset? ConfirmedAt,
+    DateTimeOffset? ClosesAt,
+    int WindowMinutes,
+    long? RemainingSeconds,
+    long? ClosedSecondsAgo,
+    string? Reason,
+    DateTimeOffset CheckedAt)
+{
+    public static OrderCancellationWindowResponse From(CancellationWindow window, DateTimeOffset checkedAt) => new(
+        window.CanCancel,
+        window.ConfirmedAt,
+        window.ClosesAt,
+        (int)window.WindowLength.TotalMinutes,
+        window.Remaining is { } remaining ? (long)Math.Floor(remaining.TotalSeconds) : null,
+        window.ClosedAgo is { } closedAgo ? (long)Math.Floor(closedAgo.TotalSeconds) : null,
+        window.Reason,
+        checkedAt);
 }
 
 /// <summary>

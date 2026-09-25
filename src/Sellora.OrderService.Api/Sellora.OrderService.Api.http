@@ -70,3 +70,31 @@ Content-Type: application/json
   "amount": 2400.00,
   "method": "Cash"
 }
+
+### US-E4-5: agency approves a scheduled delivery (AgencyOperator token)
+PUT {{host}}/api/orders/00000000-0000-0000-0000-000000000000/approval
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "decision": "Approve"
+}
+
+### US-E4-5: agency rejects — reason is mandatory
+PUT {{host}}/api/orders/00000000-0000-0000-0000-000000000000/approval
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "decision": "Reject",
+  "reason": "Shop has an unpaid invoice from last month."
+}
+
+### US-E4-5: shop owner cancels inside the window (ShopOwner token; body optional)
+POST {{host}}/api/orders/00000000-0000-0000-0000-000000000000/cancellation
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "reason": "Ordered the wrong pack size."
+}

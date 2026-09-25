@@ -6,18 +6,24 @@ namespace Sellora.OrderService.Domain.Entities;
 /// <summary>
 /// Order aggregate root. Lines and totals are fixed at creation: there are
 /// no public setters and no methods that change lines, so a submitted
-/// order's content can only be read, never edited.
+/// order's content can only be read, never edited. Status only moves through
+/// the aggregate's own methods (checkout here; approval and cancellation in
+/// the Order.Approval.cs and Order.Cancellation.cs parts, US-E4-5).
 /// </summary>
-public sealed class Order : ITenantScoped
+public sealed partial class Order : ITenantScoped
 {
     // Matches Catalog's resolve limit so US-E4-1b can price a basket in one call.
     public const int MaxLines = 100;
 
     public const int MaxProductNameLength = 200;
 
+    /// <summary>US-E4-5: longest reason a decision can carry (column length).</summary>
+    public const int MaxDecisionReasonLength = 500;
+
     private readonly List<OrderLine> _lines = new();
     private readonly List<OrderVerificationStep> _verificationSteps = new();
     private readonly List<OrderCheckIn> _checkIns = new();
+    private readonly List<OrderDecision> _decisions = new();
 
     private Order()
     {
@@ -41,8 +47,9 @@ public sealed class Order : ITenantScoped
     public OrderFulfilmentType FulfilmentType { get; private set; }
 
     /// <summary>
-    /// Decided by <see cref="FulfilmentType"/> at creation; there is no
-    /// setter and no route that changes either value afterwards.
+    /// Starts from <see cref="FulfilmentType"/> at creation and only moves
+    /// through the aggregate's methods; there is no setter and no route that
+    /// writes it directly.
     /// </summary>
     public OrderStatus Status { get; private set; }
 
@@ -69,6 +76,28 @@ public sealed class Order : ITenantScoped
 
     /// <summary>The cash collection, once checkout succeeds.</summary>
     public Payment? Payment { get; private set; }
+
+    /// <summary>
+    /// US-E4-5: every approval, rejection and shop cancellation, oldest
+    /// first — actor, role, time and reason for each.
+    /// </summary>
+    public IReadOnlyCollection<OrderDecision> Decisions => _decisions.AsReadOnly();
+
+    /// <summary>
+    /// US-E4-5: when the order became binding — the agency's approval for a
+    /// scheduled delivery, the payment for a cash sale. The shop's
+    /// cancellation window is measured from this stored value, never from a
+    /// time the client sends.
+    /// </summary>
+    public DateTimeOffset? ConfirmedAt { get; private set; }
+
+    /// <summary>
+    /// US-E4-5: optimistic concurrency token (PostgreSQL <c>xmin</c>). Two
+    /// requests deciding the same order at once — an approval racing a
+    /// cancellation, or a payment racing a cancellation — cannot both win;
+    /// the second save fails instead of silently overwriting the first.
+    /// </summary>
+    public uint Version { get; private set; }
 
     /// <summary>
     /// Where the sale was completed — the accepted check-in's coordinates.
@@ -102,6 +131,12 @@ public sealed class Order : ITenantScoped
     public string? SalesRepName { get; private set; }
 
     public string? CancellationReason { get; private set; }
+
+    /// <summary>
+    /// US-E4-5: who cancelled the order (the token's <c>sub</c>). Null when
+    /// the system cancelled it, e.g. an expired stock hold.
+    /// </summary>
+    public string? CancelledBy { get; private set; }
 
     public static Order Create(
         Guid companyId,
@@ -147,10 +182,11 @@ public sealed class Order : ITenantScoped
             ProvinceId = provinceId,
             FulfilmentType = fulfilmentType,
             // A cash sale still owes a payment at the counter; a scheduled
-            // delivery is a real order the moment it is verified.
+            // delivery is taken on credit, so the agency approves it first
+            // (US-E4-5) before it becomes binding.
             Status = fulfilmentType == OrderFulfilmentType.ImmediateCashSale
                 ? OrderStatus.AwaitingCheckout
-                : OrderStatus.Confirmed,
+                : OrderStatus.PendingApproval,
             OrderDate = orderDate,
             OrderReference = orderReference
         };
@@ -363,6 +399,7 @@ public sealed class Order : ITenantScoped
         CheckoutLatitude = checkIn.Latitude;
         CheckoutLongitude = checkIn.Longitude;
         CheckedOutAt = now;
+        ConfirmedAt = now;
         Status = OrderStatus.Confirmed;
 
         return payment;
@@ -380,6 +417,67 @@ public sealed class Order : ITenantScoped
         Status = OrderStatus.Cancelled;
         CancelledAt = now;
         CancellationReason = "The stock hold expired before checkout.";
+    }
+
+    /// <summary>
+    /// Appends a decision and moves the order to <paramref name="statusAfter"/>.
+    /// The only place a US-E4-5 decision changes <see cref="Status"/>.
+    /// </summary>
+    private OrderDecision RecordDecision(
+        OrderDecisionKind kind,
+        string actorUserId,
+        string actorRole,
+        string? reason,
+        OrderStatus statusAfter,
+        DateTimeOffset now)
+    {
+        var decision = new OrderDecision(
+            OrderId,
+            CompanyId,
+            kind,
+            RequireActor(actorUserId, "actorUserId"),
+            RequireActor(actorRole, "actorRole"),
+            reason,
+            Status,
+            statusAfter,
+            now);
+
+        _decisions.Add(decision);
+        Status = statusAfter;
+        return decision;
+    }
+
+    /// <summary>Trims a free-text reason; null when blank. Throws when too long.</summary>
+    private static string? NormaliseReason(string? reason)
+    {
+        var trimmed = reason?.Trim();
+
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+
+        if (trimmed.Length > MaxDecisionReasonLength)
+        {
+            throw new OrderDecisionRuleException(
+                OrderDecisionFailure.InvalidRequest,
+                $"reason cannot exceed {MaxDecisionReasonLength} characters.");
+        }
+
+        return trimmed;
+    }
+
+    private static string RequireActor(string value, string name)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new OrderDecisionRuleException(
+                OrderDecisionFailure.InvalidRequest,
+                $"{name} is required to record a decision.");
+        }
+
+        var trimmed = value.Trim();
+        return trimmed.Length <= OrderDecision.MaxActorLength ? trimmed : trimmed[..OrderDecision.MaxActorLength];
     }
 
     private void EnsureAwaitingCashCheckout()

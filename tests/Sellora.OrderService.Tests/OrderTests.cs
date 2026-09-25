@@ -21,7 +21,7 @@ public sealed class OrderTests
         Assert.Equal(361.50m, order.Lines.Single(l => l.Quantity == 3).LineTotal);
         Assert.Equal(2661.50m, order.Subtotal);
         Assert.Equal(order.Subtotal, order.Total);
-        Assert.Equal(OrderStatus.Confirmed, order.Status);
+        Assert.Equal(OrderStatus.PendingApproval, order.Status);
     }
 
     [Fact]
@@ -136,7 +136,7 @@ public sealed class OrderTests
 
     [Theory]
     [InlineData(OrderFulfilmentType.ImmediateCashSale, OrderStatus.AwaitingCheckout)]
-    [InlineData(OrderFulfilmentType.ScheduledDelivery, OrderStatus.Confirmed)]
+    [InlineData(OrderFulfilmentType.ScheduledDelivery, OrderStatus.PendingApproval)]
     public void Fulfilment_type_decides_the_starting_status(
         OrderFulfilmentType fulfilmentType, OrderStatus expected)
     {
