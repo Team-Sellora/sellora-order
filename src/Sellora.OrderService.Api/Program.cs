@@ -1,3 +1,5 @@
+using Sellora.OrderService.Application.VanReturns;
+using Sellora.OrderService.Infrastructure.VanReturns;
 using Sellora.OrderService.Infrastructure.Outbox;
 using Sellora.OrderService.Application.Outbox;
 using Sellora.OrderService.Application.Events;
@@ -93,6 +95,7 @@ builder.Services.AddDbContext<OrderDbContext>(options =>
 builder.Services.AddScoped<ICorrelationIdAccessor, HttpCorrelationIdAccessor>();
 builder.Services.AddScoped<IOutboxWriter, EntityFrameworkOutboxWriter>();
 builder.Services.AddScoped<IOrderEventOutbox, OrderEventOutbox>();
+builder.Services.AddScoped<IVanReturnEventOutbox, VanReturnEventOutbox>();
 builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
 builder.Services.Configure<OutboxRelayOptions>(builder.Configuration.GetSection(OutboxRelayOptions.SectionName));
 builder.Services.AddSingleton<IEventPublisher, KafkaEventPublisher>();
@@ -110,6 +113,9 @@ builder.Services.AddScoped<IOrderReadService, OrderReadService>();
 builder.Services.Configure<CancellationOptions>(builder.Configuration.GetSection(CancellationOptions.Section));
 builder.Services.AddScoped<IOrderApprovalService, OrderApprovalService>();
 builder.Services.AddScoped<IOrderCancellationService, OrderCancellationService>();
+
+// US-E4-6: end-of-route van returns.
+builder.Services.AddScoped<IVanReturnService, VanReturnService>();
 
 builder.Services.AddMemoryCache();
 builder.Services.Configure<CallerScopeOptions>(builder.Configuration.GetSection(CallerScopeOptions.Section));

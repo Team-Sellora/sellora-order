@@ -28,6 +28,7 @@ Published by **sellora-order** through a transactional outbox.
 | Cash sale checked out and paid | `OrderConfirmed`, `PaymentRecorded` |
 | Cash sale's stock hold expired before checkout | `OrderCancelled` (`source: StockHoldExpired`) |
 | Order rejected by verification, failed check-in, failed payment, rejection without a reason, cancellation outside the window | *nothing* |
+| Van return accepted by the agency (US-E4-6) | `VanStockReturned` — see below; keyed by the **return reference** (`VR-…`), not an order |
 
 ## Fields on every event
 
@@ -76,6 +77,26 @@ Names and emails are snapshots taken when the order was placed. They may be `nul
 
 Both US-E4-5 additions are additive, so the schema stays `1.0`.
 
+## `VanStockReturned` (US-E4-6)
+
+Not an order event, so it does not carry the order fields above. Same topic, same headers, same outbox and delivery guarantees; the Kafka key is the return reference.
+
+| Field | Type | Notes |
+|---|---|---|
+| `eventId`, `eventType` (`VanStockReturned`), `schemaVersion` (`1.0`), `companyId`, `correlationId`, `occurredAt` | | as above |
+| `entityId`, `vanReturnId` | uuid | the van return |
+| `returnReference` | string | e.g. `VR-260925-K7MQ4R`; also the Kafka key |
+| `salesRepId`, `salesRepName` | uuid, string | the rep who declared it |
+| `agencyId` | uuid | the rep's agency — the owner credited |
+| `vanInventoryOwnerId` | uuid | Inventory owner of the rep's van — the owner debited |
+| `declaredAt`, `acceptedAt` | timestamp | |
+| `acceptedBy` | object | `userId`, `role` |
+| `acceptanceNote` | string \| null | |
+| `lines` | array | `productId`, `productName`, `declaredQuantity`, `acceptedQuantity`, `variance` (declared − accepted) |
+| `totalDeclared`, `totalAccepted`, `totalVariance` | int | |
+
+**Only `acceptedQuantity` moves.** Inventory takes it from the van (oldest batch first, never touching stock held for a cash sale) and adds it to the agency's stock in the same batches. A line with `acceptedQuantity: 0` moves nothing. `variance` is the shrinkage signal and changes no stock.
+
 ## Example — `PaymentRecorded`
 
 ```json
@@ -118,6 +139,7 @@ Both US-E4-5 additions are additive, so the schema stays `1.0`.
 | **Notification** (US-E5-1) | All of them; the shop and agency emails come from `shop.ownerEmail` and `agency.email`. `source` says who to tell about a cancellation. |
 | **Delivery** (E6) | `OrderConfirmed` for scheduled deliveries. |
 | **Audit** (E7) | All four, including the location evidence. |
+| **Inventory** (US-E4-6) | `VanStockReturned` → transfers `acceptedQuantity` from `vanInventoryOwnerId` to the agency's owner. |
 
 ## Changing this contract
 

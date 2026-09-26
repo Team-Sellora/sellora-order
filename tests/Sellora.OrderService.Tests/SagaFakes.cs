@@ -102,6 +102,26 @@ internal sealed class FakeInventory : IInventoryClient
         return ResolveFulfilmentAsync(orderReference, Guid.Empty, lines, cancellationToken);
     }
 
+    /// <summary>US-E4-6: available quantity per product in the van (any owner, for the fake).</summary>
+    public Dictionary<Guid, int> Available { get; } = new();
+    public List<(Guid OwnerId, IReadOnlyCollection<BasketLine> Lines)> AvailabilityChecks { get; } = new();
+
+    public Task<IReadOnlyCollection<StockAvailabilityResponse>> CheckAvailabilityAsync(
+        Guid inventoryOwnerId, IReadOnlyCollection<BasketLine> lines, CancellationToken cancellationToken)
+    {
+        if (Unavailable) throw new DependencyUnavailableException(Dependency.Inventory);
+        AvailabilityChecks.Add((inventoryOwnerId, lines));
+
+        IReadOnlyCollection<StockAvailabilityResponse> result = lines
+            .Select(line =>
+            {
+                var available = Available.GetValueOrDefault(line.ProductId);
+                return new StockAvailabilityResponse(line.ProductId, null, line.Quantity, available, available >= line.Quantity);
+            })
+            .ToList();
+        return Task.FromResult(result);
+    }
+
     public Task<Guid?> FindVanOwnerAsync(Guid salesRepId, CancellationToken cancellationToken)
     {
         if (Unavailable) throw new DependencyUnavailableException(Dependency.Inventory);

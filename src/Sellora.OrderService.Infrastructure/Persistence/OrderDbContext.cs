@@ -28,6 +28,11 @@ public class OrderDbContext : DbContext
     /// <summary>US-E4-5: approvals, rejections and shop cancellations.</summary>
     public DbSet<OrderDecision> OrderDecisions => Set<OrderDecision>();
 
+    /// <summary>US-E4-6: end-of-route van returns.</summary>
+    public DbSet<VanReturn> VanReturns => Set<VanReturn>();
+
+    public DbSet<VanReturnLine> VanReturnLines => Set<VanReturnLine>();
+
     /// <summary>
     /// Events committed with the order change they describe (US-E4-4).
     /// No tenant filter: the relay reads every tenant's rows, and nothing
@@ -66,5 +71,15 @@ public class OrderDbContext : DbContext
             .HasQueryFilter(decision =>
                 _tenantContext.CompanyId != null &&
                 decision.CompanyId == _tenantContext.CompanyId);
+
+        modelBuilder.Entity<VanReturn>()
+            .HasQueryFilter(vanReturn =>
+                _tenantContext.CompanyId != null &&
+                vanReturn.CompanyId == _tenantContext.CompanyId);
+
+        modelBuilder.Entity<VanReturnLine>()
+            .HasQueryFilter(line =>
+                _tenantContext.CompanyId != null &&
+                line.CompanyId == _tenantContext.CompanyId);
     }
 }
