@@ -63,6 +63,11 @@ jobs:
     env:
       DOTNET_NOLOGO: true
       DOTNET_CLI_TELEMETRY_OPTOUT: true
+      # US-E4-5-D1: Explicitly pin the runner to UTC so the one-hour
+      # cancellation-window boundary tests behave identically on a developer's
+      # machine, the CI runner, and the Azure staging slot regardless of each
+      # environment's local timezone setting.
+      TZ: UTC
 
     steps:
       - name: Checkout repository
