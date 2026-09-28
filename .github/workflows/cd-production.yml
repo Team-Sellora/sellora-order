@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: cd-production-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   deploy-production:
     name: Deploy to Azure production
