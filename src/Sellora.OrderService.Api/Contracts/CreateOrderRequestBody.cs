@@ -7,7 +7,8 @@ namespace Sellora.OrderService.Api.Contracts;
 /// </summary>
 public sealed class CreateOrderRequestBody
 {
-    public Guid ShopId { get; init; }
+    /// <summary>Nullable to avoid under-posting; a missing shopId is rejected as "shopId is required.".</summary>
+    public Guid? ShopId { get; init; }
 
     /// <summary>"ImmediateCashSale" or "ScheduledDelivery" (US-E4-2).</summary>
     public string? FulfilmentType { get; init; }

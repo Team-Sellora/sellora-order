@@ -183,7 +183,7 @@ public sealed class OrdersController : ControllerBase
         }
 
         var request = new CreateOrderRequest(
-            body.ShopId,
+            body.ShopId ?? Guid.Empty,
             fulfilmentType,
             (body.Lines ?? Array.Empty<CreateOrderLineRequestBody>())
                 .Select(line => new BasketLine(line.ProductId, line.Quantity))
