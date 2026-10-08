@@ -204,15 +204,15 @@ public sealed record OrderCheckoutResponse(
                     payment.SalesRepId, payment.CheckInId, payment.Latitude, payment.Longitude,
                     payment.DistanceMeters, payment.RecordedAt)
                 : null,
-            latest is null
-                ? null
-                : new CheckInResponse(
-                    latest.OrderCheckInId, latest.OrderId, latest.Accepted, latest.DistanceMeters,
-                    latest.RadiusMeters, latest.Latitude, latest.Longitude, latest.RecordedAt,
-                    latest.Accepted ? latest.ExpiresAt : null),
+            latest is null ? null : ToCheckInResponse(latest),
             order.CancelledAt,
             order.CancellationReason);
     }
+
+    private static CheckInResponse ToCheckInResponse(OrderCheckIn checkIn) => new(
+        checkIn.OrderCheckInId, checkIn.OrderId, checkIn.Accepted, checkIn.DistanceMeters,
+        checkIn.RadiusMeters, checkIn.Latitude, checkIn.Longitude, checkIn.RecordedAt,
+        checkIn.Accepted ? checkIn.ExpiresAt : null);
 }
 
 public sealed record OrderSummaryResponse(

@@ -130,6 +130,8 @@ public static class DependencyRegistration
         }
 
         // A trailing slash keeps relative paths like "api/hierarchy" under any gateway prefix.
-        return uri.AbsoluteUri.EndsWith('/') ? uri : new Uri(uri.AbsoluteUri + "/");
+        const char PathSeparator = '/';
+
+        return uri.AbsoluteUri.EndsWith(PathSeparator) ? uri : new Uri(uri.AbsoluteUri + PathSeparator);
     }
 }

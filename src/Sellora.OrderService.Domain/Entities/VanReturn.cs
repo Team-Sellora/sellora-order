@@ -56,7 +56,7 @@ public sealed class VanReturn : ITenantScoped
     public string? AcceptanceNote { get; private set; }
 
     /// <summary>PostgreSQL xmin: two operators accepting at once cannot both win.</summary>
-    public uint Version { get; private set; }
+    public uint Version { get; }
 
     public IReadOnlyCollection<VanReturnLine> Lines => _lines.AsReadOnly();
 

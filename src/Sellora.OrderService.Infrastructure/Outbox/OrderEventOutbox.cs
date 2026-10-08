@@ -232,7 +232,7 @@ public sealed class OrderEventOutbox(IOutboxWriter writer, ICorrelationIdAccesso
     private static EventSalesRep Rep(Order order) =>
         new(order.SalesRepId, order.SalesRepName);
 
-    private static IReadOnlyList<EventOrderLine> Lines(Order order) =>
+    private static List<EventOrderLine> Lines(Order order) =>
         order.Lines
             .Select(line => new EventOrderLine(
                 line.ProductId,

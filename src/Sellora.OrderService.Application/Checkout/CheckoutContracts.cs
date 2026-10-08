@@ -1,3 +1,4 @@
+using System.Globalization;
 using Sellora.OrderService.Domain.Orders;
 
 namespace Sellora.OrderService.Application.Checkout;
@@ -62,7 +63,8 @@ public sealed record CheckInResult(
         checkIn,
         checkIn.Accepted
             ? null
-            : FormattableString.Invariant(
+            : string.Create(
+                CultureInfo.InvariantCulture,
                 $"You are {Math.Round(checkIn.DistanceMeters, MidpointRounding.AwayFromZero):N0} m from the shop; check-in is allowed within {Math.Round(checkIn.RadiusMeters, MidpointRounding.AwayFromZero):N0} m. Move closer and try again."));
 
     public static CheckInResult Failed(CheckoutOutcome outcome, string message) => new(outcome, null, message);
