@@ -15,6 +15,8 @@ namespace Sellora.OrderService.Tests;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class OrderCancellationServiceTests
 {
+    private static readonly string[] CancelledEvents = { "OrderCancelled" };
+
     private readonly PostgreSqlFixture _fixture;
     private readonly Guid _companyId = Guid.NewGuid();
     private readonly Placement _place = Placement.New();
@@ -90,7 +92,7 @@ public sealed class OrderCancellationServiceTests
         Assert.Equal(SelloraRoles.ShopOwner, cancellation.ActorRole);
         Assert.Equal("Ordered the wrong pack size", cancellation.Reason);
 
-        Assert.Equal(new[] { "OrderCancelled" }, await EventTypesAsync(order.OrderId));
+        Assert.Equal(CancelledEvents, await EventTypesAsync(order.OrderId));
     }
 
     // Acceptance scenario 2.
