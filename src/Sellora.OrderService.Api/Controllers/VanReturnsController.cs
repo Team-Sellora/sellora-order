@@ -101,7 +101,7 @@ public sealed class VanReturnsController : ControllerBase
             : Ok(vanReturn);
     }
 
-    private IActionResult ToProblem(VanReturnResult result)
+    private ObjectResult ToProblem(VanReturnResult result)
     {
         var (status, title) = result.Outcome switch
         {

@@ -76,7 +76,7 @@ public sealed class CallerScopeMiddleware(RequestDelegate next)
                     Title = "Dependency unavailable",
                     Detail = "Organization service is currently unavailable, so your access could not be resolved. Try again shortly.",
                     Extensions = { ["dependency"] = nameof(Dependency.Organization) }
-                });
+                }, context.RequestAborted);
                 return;
             }
         }

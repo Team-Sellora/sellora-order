@@ -14,6 +14,8 @@ namespace Sellora.OrderService.Tests;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class OrderApprovalServiceTests
 {
+    private static readonly string[] ApprovedEvents = { "OrderApproved", "OrderConfirmed" };
+
     private const string Correlation = "approval-test-correlation";
 
     private readonly PostgreSqlFixture _fixture;
@@ -87,7 +89,7 @@ public sealed class OrderApprovalServiceTests
         Assert.Equal(_clock.Now, decision.DecidedAt);
 
         var events = await EventsAsync(order.OrderId);
-        Assert.Equal(new[] { "OrderApproved", "OrderConfirmed" }, events.Select(e => e.EventType));
+        Assert.Equal(ApprovedEvents, events.Select(e => e.EventType));
         Assert.All(events, e => Assert.Equal(order.OrderReference, e.MessageKey));
 
         var approved = JsonDocument.Parse(events[0].Payload).RootElement;

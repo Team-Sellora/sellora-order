@@ -119,7 +119,9 @@ jobs:
             /k:"${{ inputs.sonar-project-key }}" \
             /o:"${{ inputs.sonar-organization }}" \
             /d:sonar.token="$SONAR_TOKEN" \
-            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml"
+            /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" \
+            /d:sonar.exclusions="**/Migrations/**" \
+            /d:sonar.coverage.exclusions="**/Migrations/**,**/Program.cs,**/OrderDbContextFactory.cs"
 
       - name: Build solution
         run: |
@@ -151,7 +153,8 @@ jobs:
             --no-build \
             --collect:"XPlat Code Coverage" \
             --results-directory ./TestResults \
-            --logger "trx;LogFileName=test-results.trx"
+            --logger "trx;LogFileName=test-results.trx" \
+            -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
 
       - name: SonarQube end
         if: always()
@@ -188,11 +191,11 @@ jobs:
           docker run -d --name sellora-order-ci \
             --network host \
             -e ASPNETCORE_ENVIRONMENT=Container \
-            -e ASPNETCORE_URLS="http://+:8099" \
+            -e ASPNETCORE_URLS="http://localhost:8099" \
             -e ConnectionStrings__Default="Host=localhost;Port=5432;Database=order_ci;Username=sellora_ci;Password=sellora_ci_password" \
-            -e Dependencies__Organization__BaseUrl="http://org-svc.invalid" \
-            -e Dependencies__Catalog__BaseUrl="http://catalog-svc.invalid" \
-            -e Dependencies__Inventory__BaseUrl="http://inventory-svc.invalid" \
+            -e Dependencies__Organization__BaseUrl="https://org-svc.invalid" \
+            -e Dependencies__Catalog__BaseUrl="https://catalog-svc.invalid" \
+            -e Dependencies__Inventory__BaseUrl="https://inventory-svc.invalid" \
             -e Jwt__Authority="https://auth.invalid" \
             -e Jwt__MetadataAddress="https://auth.invalid/.well-known/openid-configuration" \
             -e Jwt__Issuer="https://auth.invalid" \

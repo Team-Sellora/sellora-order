@@ -1,3 +1,4 @@
+using System.Globalization;
 using Sellora.OrderService.Domain.Orders;
 using Sellora.OrderService.Domain.Tenancy;
 
@@ -97,7 +98,7 @@ public sealed partial class Order : ITenantScoped
     /// cancellation, or a payment racing a cancellation — cannot both win;
     /// the second save fails instead of silently overwriting the first.
     /// </summary>
-    public uint Version { get; private set; }
+    public uint Version { get; }
 
     /// <summary>
     /// Where the sale was completed — the accepted check-in's coordinates.
@@ -264,7 +265,13 @@ public sealed partial class Order : ITenantScoped
     private static string? Clip(string? value, int maxLength)
     {
         var trimmed = value?.Trim();
-        return string.IsNullOrEmpty(trimmed) ? null : trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+
+        if (string.IsNullOrEmpty(trimmed))
+        {
+            return null;
+        }
+
+        return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
     }
 
     /// <summary>
@@ -373,7 +380,8 @@ public sealed partial class Order : ITenantScoped
         {
             throw new CheckoutRuleViolationException(
                 CheckoutFailure.AmountMismatch,
-                FormattableString.Invariant(
+                string.Create(
+                    CultureInfo.InvariantCulture,
                     $"The payment amount {amount:N2} does not match the order total {Total:N2}."));
         }
 

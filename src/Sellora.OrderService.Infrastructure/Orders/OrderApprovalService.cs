@@ -67,6 +67,7 @@ public sealed class OrderApprovalService : IOrderApprovalService
         var order = await _db.Orders
             .Include(candidate => candidate.Lines)
             .Include(candidate => candidate.Decisions)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(
                 candidate => candidate.OrderId == orderId && candidate.AgencyId == agencyId,
                 cancellationToken);
@@ -83,8 +84,8 @@ public sealed class OrderApprovalService : IOrderApprovalService
         try
         {
             decision = request.Decision == ApprovalDecision.Approve
-                ? order.Approve(agencyId, _caller.Subject!, SelloraRoles.AgencyOperator, now)
-                : order.Reject(agencyId, _caller.Subject!, SelloraRoles.AgencyOperator, request.Reason, now);
+                ? order.Approve(agencyId, _caller.Subject, SelloraRoles.AgencyOperator, now)
+                : order.Reject(agencyId, _caller.Subject, SelloraRoles.AgencyOperator, request.Reason, now);
         }
         catch (OrderDecisionRuleException exception)
         {

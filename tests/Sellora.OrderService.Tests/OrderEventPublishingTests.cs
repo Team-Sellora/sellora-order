@@ -22,6 +22,9 @@ namespace Sellora.OrderService.Tests;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class OrderEventPublishingTests
 {
+    private static readonly string[] CashSaleEvents = { "OrderPlaced", "OrderConfirmed", "PaymentRecorded" };
+    private static readonly string[] ConfirmationRecipients = { "owner@pererastores.lk", "orders@colombo-agency.lk" };
+
     private const string Correlation = "req-7f3a-correlation";
 
     private readonly PostgreSqlFixture _fixture;
@@ -154,7 +157,7 @@ public sealed class OrderEventPublishingTests
         Assert.Equal(CheckoutOutcome.Succeeded, (await PayAsync(orderId, total)).Outcome);
 
         var events = await EventsAsync(orderId);
-        Assert.Equal(new[] { "OrderPlaced", "OrderConfirmed", "PaymentRecorded" }, events.Select(e => e.EventType));
+        Assert.Equal(CashSaleEvents, events.Select(e => e.EventType));
 
         var confirmed = Payload(events[1]);
         var payment = Payload(events[2]);
@@ -288,7 +291,7 @@ public sealed class OrderEventPublishingTests
             $"{payload.GetProperty("payment").GetProperty("recordedAt").GetDateTimeOffset():u} · " +
             $"https://maps.google.com/?q={location.GetProperty("latitude").GetDouble()},{location.GetProperty("longitude").GetDouble()}";
 
-        Assert.Equal(new[] { "owner@pererastores.lk", "orders@colombo-agency.lk" }, recipients);
+        Assert.Equal(ConfirmationRecipients, recipients);
         Assert.Contains("Perera Stores", body);
         Assert.Contains("rep Ruwan Dias", body);
         Assert.Contains("3 × Sunlight Soap 100g", body);

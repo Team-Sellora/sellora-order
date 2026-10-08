@@ -59,33 +59,9 @@ public sealed class OrderCreationService : IOrderCreationService
         CreateOrderRequest request,
         CancellationToken cancellationToken)
     {
-        if (_tenant.CompanyId is not { } companyId)
+        if (Precheck(request, out var companyId, out var salesRepId) is { } invalid)
         {
-            return CreateOrderResult.Failed(
-                CreateOrderOutcome.TenantNotAvailable,
-                "A valid company identifier was not found in the access token.");
-        }
-
-        if (_caller.SalesRepId is not { } salesRepId)
-        {
-            return CreateOrderResult.Failed(
-                CreateOrderOutcome.CallerNotSalesRep,
-                "The access token does not identify a sales rep.");
-        }
-
-        if (request.ShopId == Guid.Empty)
-        {
-            return CreateOrderResult.Failed(CreateOrderOutcome.InvalidRequest, "shopId is required.");
-        }
-
-        // Cheap local checks first, so a bad basket never costs a network call.
-        try
-        {
-            Order.ValidateBasket(request.Lines);
-        }
-        catch (OrderRuleViolationException exception)
-        {
-            return CreateOrderResult.Failed(CreateOrderOutcome.InvalidRequest, exception.Message);
+            return invalid;
         }
 
         var saga = new SagaTrace();
@@ -118,9 +94,7 @@ public sealed class OrderCreationService : IOrderCreationService
             {
                 return saga.Fail(
                     VerificationStep.PriceResolution,
-                    unresolved.Count == 1
-                        ? $"Product {unresolved[0].ProductId} could not be priced: {unresolved[0].Reason}"
-                        : $"{unresolved.Count} products could not be priced.",
+                    DescribeUnresolved(unresolved),
                     unresolvedProducts: unresolved);
             }
 
@@ -153,139 +127,32 @@ public sealed class OrderCreationService : IOrderCreationService
                 orderDate,
                 priced);
 
-            var outstanding = await OutstandingBalanceAsync(shop.ShopId, cancellationToken);
-            var exposure = outstanding + order.Total;
-
-            if (exposure > shop.CreditLimit)
+            if (await CheckCreditAsync(saga, order, shop, cancellationToken) is { } overLimit)
             {
-                var credit = new CreditCheckDetail(
-                    shop.CreditLimit, outstanding, order.Total, exposure - shop.CreditLimit);
-
-                return saga.Fail(
-                    VerificationStep.CreditLimit,
-                    $"Order total {order.Total:N2} plus outstanding balance {outstanding:N2} " +
-                    $"exceeds {shop.Name}'s credit limit of {shop.CreditLimit:N2} by {credit.ExceededBy:N2}.",
-                    credit: credit);
+                return overLimit;
             }
-
-            saga.Pass(
-                VerificationStep.CreditLimit,
-                $"{exposure:N2} of {shop.CreditLimit:N2} credit used after this order.");
 
             // ---- Step 4: reserve stock, from the right source ------------
-            // A cash sale hands goods over there and then, so it can only be
-            // served from the rep's own van. Inventory's fulfilment resolver
-            // only ever picks agency or company stock, so the two paths use
-            // different endpoints rather than the same one with a check after.
-            StockReservationAttempt attempt;
+            var attempt = await ReserveStockAsync(request, shop, salesRepId, reference, cancellationToken);
 
-            if (request.FulfilmentType == OrderFulfilmentType.ImmediateCashSale)
+            if (attempt is null)
             {
-                var vanOwnerId = await _inventory.FindVanOwnerAsync(salesRepId, cancellationToken);
-
-                if (vanOwnerId is null)
-                {
-                    return saga.Fail(
-                        VerificationStep.StockReservation,
-                        "An immediate cash sale hands the goods over from your van, but you have " +
-                        "no van stock recorded. Choose scheduled delivery instead.");
-                }
-
-                attempt = await _inventory.ReserveAsync(
-                    reference, vanOwnerId.Value, request.Lines, cancellationToken);
-            }
-            else
-            {
-                attempt = await _inventory.ResolveFulfilmentAsync(
-                    reference, shop.AgencyId, request.Lines, cancellationToken);
+                return saga.Fail(
+                    VerificationStep.StockReservation,
+                    "An immediate cash sale hands the goods over from your van, but you have " +
+                    "no van stock recorded. Choose scheduled delivery instead.");
             }
 
-            switch (attempt.Status)
+            if (RejectReservation(saga, attempt, order, request.FulfilmentType) is { } notReserved)
             {
-                case StockReservationStatus.InsufficientStock:
-                    var shortages = attempt.Shortages
-                        .Select(shortage => new StockShortage(
-                            shortage.ProductId,
-                            order.Lines.FirstOrDefault(line => line.ProductId == shortage.ProductId)?.ProductNameSnapshot,
-                            shortage.RequestedQuantity,
-                            shortage.AvailableQuantity,
-                            shortage.RequestedQuantity - shortage.AvailableQuantity))
-                        .ToList();
-
-                    var where = request.FulfilmentType == OrderFulfilmentType.ImmediateCashSale
-                        ? " Your van is short — scheduled delivery can source this from the agency."
-                        : string.Empty;
-
-                    return saga.Fail(
-                        VerificationStep.StockReservation,
-                        string.Join(" ", shortages.Select(shortage =>
-                            $"{shortage.ProductName ?? shortage.ProductId.ToString()}: requested {shortage.RequestedQuantity}, " +
-                            $"only {shortage.AvailableQuantity} available (short by {shortage.ShortBy}).")) + where,
-                        shortages: shortages);
-
-                case StockReservationStatus.Rejected:
-                    return saga.Fail(
-                        VerificationStep.StockReservation,
-                        attempt.Message ?? "Inventory could not reserve the stock.");
+                return notReserved;
             }
 
             reservation = attempt.Reservation!;
-            saga.Pass(
-                VerificationStep.StockReservation,
-                $"Reservation {reservation.ReservationId} holds " +
-                (request.FulfilmentType == OrderFulfilmentType.ImmediateCashSale ? "van" : "agency") +
-                $" stock until {reservation.ExpiresAt:u}.");
+            saga.Pass(VerificationStep.StockReservation, DescribeReservation(reservation, request.FulfilmentType));
 
             // ---- Accept: persist the order and its recorded outcomes ------
-            var acceptedAt = _clock.GetUtcNow();
-
-            order.CompleteVerification(
-                reservation.ReservationId,
-                reservation.InventoryOwnerId,
-                saga.Records,
-                acceptedAt);
-
-            // US-E4-4: snapshot who the order is for, so its events can be
-            // emailed without calling Organization back.
-            order.RecordContacts(new OrderContacts(
-                shop.Name,
-                shop.OwnerName,
-                shop.OwnerEmail,
-                shop.AgencyName,
-                shop.AgencyEmail,
-                _caller.DisplayName));
-
-            // Same SaveChanges as the order: both commit or neither does, so
-            // an order can never exist without its events. Nothing is
-            // confirmed at placement any more: a cash sale waits for checkout
-            // and a scheduled delivery for its agency's approval (US-E4-5),
-            // and OrderConfirmed is written when that happens.
-            _events.OrderPlaced(order, acceptedAt);
-
-            _db.Orders.Add(order);
-            await _db.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation(
-                "Order {OrderReference} ({OrderId}) accepted for shop {ShopId} by rep {SalesRepId} as {FulfilmentType} in status {Status}; reservation {ReservationId}",
-                order.OrderReference, order.OrderId, order.ShopId, salesRepId,
-                order.FulfilmentType, order.Status, reservation.ReservationId);
-
-            // A scheduled delivery's stock is committed now, while it waits
-            // for approval: Inventory's hold expires in minutes, far sooner
-            // than an agency decides, and the agency must not be able to sell
-            // the same stock twice meanwhile. A rejection or cancellation
-            // returns it through the OrderCancelled event (US-E4-5). A cash
-            // sale keeps the stock merely held until checkout (US-E4-3).
-            if (order.FulfilmentType == OrderFulfilmentType.ScheduledDelivery &&
-                await _inventory.ConfirmReservationAsync(reservation.ReservationId, CancellationToken.None)
-                    is not (ReservationConfirmOutcome.Confirmed or ReservationConfirmOutcome.AlreadyConfirmed))
-            {
-                // The order stands; the stock is still held rather than sold,
-                // so nothing is oversold. Needs an operator to reconcile.
-                _logger.LogError(
-                    "Order {OrderReference} is {Status} but reservation {ReservationId} could not be committed; stock is still held",
-                    order.OrderReference, order.Status, reservation.ReservationId);
-            }
+            await AcceptAsync(order, shop, reservation, saga, salesRepId, cancellationToken);
 
             return CreateOrderResult.Created(OrderResponse.From(order));
         }
@@ -306,11 +173,11 @@ public sealed class OrderCreationService : IOrderCreationService
 
             return saga.Fail(saga.CurrentStep, exception.Message);
         }
-        catch (Exception exception) when (reservation is not null)
+        catch (Exception) when (reservation is not null)
         {
             // Any failure after the reservation exists — typically the save —
-            // must not strand stock.
-            _logger.LogError(exception, "Order save failed after reservation {ReservationId}", reservation.ReservationId);
+            // must not strand stock. The compensation logs the reservation;
+            // the exception itself is logged once by the global handler.
             await CompensateAsync(reservation, "the order could not be saved");
             throw;
         }
@@ -322,6 +189,209 @@ public sealed class OrderCreationService : IOrderCreationService
                     "Order rejected at {FailedStep} for shop {ShopId} by rep {SalesRepId}: {Reason}",
                     rejection.FailedStep, request.ShopId, salesRepId, rejection.Reason);
             }
+        }
+    }
+
+    /// <summary>
+    /// Cheap local checks first, so a bad basket never costs a network call.
+    /// Returns the failure, or null when the saga can start.
+    /// </summary>
+    private CreateOrderResult? Precheck(CreateOrderRequest request, out Guid companyId, out Guid salesRepId)
+    {
+        companyId = Guid.Empty;
+        salesRepId = Guid.Empty;
+
+        if (_tenant.CompanyId is not { } tenantCompanyId)
+        {
+            return CreateOrderResult.Failed(
+                CreateOrderOutcome.TenantNotAvailable,
+                "A valid company identifier was not found in the access token.");
+        }
+
+        companyId = tenantCompanyId;
+
+        if (_caller.SalesRepId is not { } callerSalesRepId)
+        {
+            return CreateOrderResult.Failed(
+                CreateOrderOutcome.CallerNotSalesRep,
+                "The access token does not identify a sales rep.");
+        }
+
+        salesRepId = callerSalesRepId;
+
+        if (request.ShopId == Guid.Empty)
+        {
+            return CreateOrderResult.Failed(CreateOrderOutcome.InvalidRequest, "shopId is required.");
+        }
+
+        try
+        {
+            Order.ValidateBasket(request.Lines);
+        }
+        catch (OrderRuleViolationException exception)
+        {
+            return CreateOrderResult.Failed(CreateOrderOutcome.InvalidRequest, exception.Message);
+        }
+
+        return null;
+    }
+
+    /// <summary>Step 3: the order plus the shop's outstanding balance must fit its credit limit.</summary>
+    private async Task<CreateOrderResult?> CheckCreditAsync(
+        SagaTrace saga,
+        Order order,
+        ShopPlacement shop,
+        CancellationToken cancellationToken)
+    {
+        var outstanding = await OutstandingBalanceAsync(shop.ShopId, cancellationToken);
+        var exposure = outstanding + order.Total;
+
+        if (exposure > shop.CreditLimit)
+        {
+            var credit = new CreditCheckDetail(
+                shop.CreditLimit, outstanding, order.Total, exposure - shop.CreditLimit);
+
+            return saga.Fail(
+                VerificationStep.CreditLimit,
+                $"Order total {order.Total:N2} plus outstanding balance {outstanding:N2} " +
+                $"exceeds {shop.Name}'s credit limit of {shop.CreditLimit:N2} by {credit.ExceededBy:N2}.",
+                credit: credit);
+        }
+
+        saga.Pass(
+            VerificationStep.CreditLimit,
+            $"{exposure:N2} of {shop.CreditLimit:N2} credit used after this order.");
+
+        return null;
+    }
+
+    /// <summary>
+    /// Step 4. A cash sale hands goods over there and then, so it can only be
+    /// served from the rep's own van. Inventory's fulfilment resolver only
+    /// ever picks agency or company stock, so the two paths use different
+    /// endpoints rather than the same one with a check after. Null when a
+    /// cash sale has no van stock to come from.
+    /// </summary>
+    private async Task<StockReservationAttempt?> ReserveStockAsync(
+        CreateOrderRequest request,
+        ShopPlacement shop,
+        Guid salesRepId,
+        string reference,
+        CancellationToken cancellationToken)
+    {
+        if (request.FulfilmentType != OrderFulfilmentType.ImmediateCashSale)
+        {
+            return await _inventory.ResolveFulfilmentAsync(
+                reference, shop.AgencyId, request.Lines, cancellationToken);
+        }
+
+        var vanOwnerId = await _inventory.FindVanOwnerAsync(salesRepId, cancellationToken);
+
+        if (vanOwnerId is null)
+        {
+            return null;
+        }
+
+        return await _inventory.ReserveAsync(
+            reference, vanOwnerId.Value, request.Lines, cancellationToken);
+    }
+
+    /// <summary>The rejection for an attempt that reserved nothing; null when the stock is held.</summary>
+    private static CreateOrderResult? RejectReservation(
+        SagaTrace saga,
+        StockReservationAttempt attempt,
+        Order order,
+        OrderFulfilmentType fulfilmentType)
+    {
+        switch (attempt.Status)
+        {
+            case StockReservationStatus.InsufficientStock:
+                var shortages = attempt.Shortages
+                    .Select(shortage => new StockShortage(
+                        shortage.ProductId,
+                        order.Lines.FirstOrDefault(line => line.ProductId == shortage.ProductId)?.ProductNameSnapshot,
+                        shortage.RequestedQuantity,
+                        shortage.AvailableQuantity,
+                        shortage.RequestedQuantity - shortage.AvailableQuantity))
+                    .ToList();
+
+                var where = fulfilmentType == OrderFulfilmentType.ImmediateCashSale
+                    ? " Your van is short — scheduled delivery can source this from the agency."
+                    : string.Empty;
+
+                return saga.Fail(
+                    VerificationStep.StockReservation,
+                    string.Join(" ", shortages.Select(shortage =>
+                        $"{shortage.ProductName ?? shortage.ProductId.ToString()}: requested {shortage.RequestedQuantity}, " +
+                        $"only {shortage.AvailableQuantity} available (short by {shortage.ShortBy}).")) + where,
+                    shortages: shortages);
+
+            case StockReservationStatus.Rejected:
+                return saga.Fail(
+                    VerificationStep.StockReservation,
+                    attempt.Message ?? "Inventory could not reserve the stock.");
+
+            default:
+                return null;
+        }
+    }
+
+    private async Task AcceptAsync(
+        Order order,
+        ShopPlacement shop,
+        StockReservationResponse reservation,
+        SagaTrace saga,
+        Guid salesRepId,
+        CancellationToken cancellationToken)
+    {
+        var acceptedAt = _clock.GetUtcNow();
+
+        order.CompleteVerification(
+            reservation.ReservationId,
+            reservation.InventoryOwnerId,
+            saga.Records,
+            acceptedAt);
+
+        // US-E4-4: snapshot who the order is for, so its events can be
+        // emailed without calling Organization back.
+        order.RecordContacts(new OrderContacts(
+            shop.Name,
+            shop.OwnerName,
+            shop.OwnerEmail,
+            shop.AgencyName,
+            shop.AgencyEmail,
+            _caller.DisplayName));
+
+        // Same SaveChanges as the order: both commit or neither does, so
+        // an order can never exist without its events. Nothing is
+        // confirmed at placement any more: a cash sale waits for checkout
+        // and a scheduled delivery for its agency's approval (US-E4-5),
+        // and OrderConfirmed is written when that happens.
+        _events.OrderPlaced(order, acceptedAt);
+
+        _db.Orders.Add(order);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _logger.LogInformation(
+            "Order {OrderReference} ({OrderId}) accepted for shop {ShopId} by rep {SalesRepId} as {FulfilmentType} in status {Status}; reservation {ReservationId}",
+            order.OrderReference, order.OrderId, order.ShopId, salesRepId,
+            order.FulfilmentType, order.Status, reservation.ReservationId);
+
+        // A scheduled delivery's stock is committed now, while it waits
+        // for approval: Inventory's hold expires in minutes, far sooner
+        // than an agency decides, and the agency must not be able to sell
+        // the same stock twice meanwhile. A rejection or cancellation
+        // returns it through the OrderCancelled event (US-E4-5). A cash
+        // sale keeps the stock merely held until checkout (US-E4-3).
+        if (order.FulfilmentType == OrderFulfilmentType.ScheduledDelivery &&
+            await _inventory.ConfirmReservationAsync(reservation.ReservationId, CancellationToken.None)
+                is not (ReservationConfirmOutcome.Confirmed or ReservationConfirmOutcome.AlreadyConfirmed))
+        {
+            // The order stands; the stock is still held rather than sold,
+            // so nothing is oversold. Needs an operator to reconcile.
+            _logger.LogError(
+                "Order {OrderReference} is {Status} but reservation {ReservationId} could not be committed; stock is still held",
+                order.OrderReference, order.Status, reservation.ReservationId);
         }
     }
 
@@ -385,7 +455,7 @@ public sealed class OrderCreationService : IOrderCreationService
             }
 
             // The catalogue's price, never the client's.
-            priced.Add(new NewOrderLine(line.ProductId, product.Name!, line.Quantity, price));
+            priced.Add(new NewOrderLine(line.ProductId, product.Name, line.Quantity, price));
         }
 
         return priced;
@@ -417,6 +487,16 @@ public sealed class OrderCreationService : IOrderCreationService
 
         throw new InvalidOperationException("Could not generate a unique order reference.");
     }
+
+    private static string DescribeUnresolved(List<UnresolvedProduct> unresolved) =>
+        unresolved.Count == 1
+            ? $"Product {unresolved[0].ProductId} could not be priced: {unresolved[0].Reason}"
+            : $"{unresolved.Count} products could not be priced.";
+
+    private static string DescribeReservation(StockReservationResponse reservation, OrderFulfilmentType fulfilmentType) =>
+        $"Reservation {reservation.ReservationId} holds " +
+        (fulfilmentType == OrderFulfilmentType.ImmediateCashSale ? "van" : "agency") +
+        $" stock until {reservation.ExpiresAt:u}.";
 
     private static string DescribeRelationshipFailure(string? reason) => reason switch
     {

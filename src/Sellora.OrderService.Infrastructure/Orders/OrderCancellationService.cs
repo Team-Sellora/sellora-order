@@ -4,6 +4,7 @@ using Microsoft.Extensions.Options;
 using Sellora.OrderService.Application.Events;
 using Sellora.OrderService.Application.Identity;
 using Sellora.OrderService.Application.Orders;
+using Sellora.OrderService.Domain.Entities;
 using Sellora.OrderService.Domain.Orders;
 using Sellora.OrderService.Domain.Tenancy;
 using Sellora.OrderService.Infrastructure.Persistence;
@@ -74,6 +75,7 @@ public sealed class OrderCancellationService : IOrderCancellationService
             .Include(candidate => candidate.Decisions)
             .Include(candidate => candidate.CheckIns)
             .Include(candidate => candidate.Payment)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(
                 candidate => candidate.OrderId == orderId && candidate.ShopId == shopId,
                 cancellationToken);
@@ -88,16 +90,11 @@ public sealed class OrderCancellationService : IOrderCancellationService
 
         try
         {
-            order.CancelByShop(shopId, _caller.Subject!, SelloraRoles.ShopOwner, request.Reason, now, _window);
+            order.CancelByShop(shopId, _caller.Subject, SelloraRoles.ShopOwner, request.Reason, now, _window);
         }
         catch (OrderDecisionRuleException exception)
         {
-            if (exception.Failure == OrderDecisionFailure.CancellationWindowClosed)
-            {
-                _logger.LogInformation(
-                    "Cancellation of {OrderReference} refused: window closed at {ClosedAt}",
-                    order.OrderReference, exception.WindowClosedAt);
-            }
+            LogRefusal(order, exception);
 
             return OrderDecisionErrors.From(exception, now);
         }
@@ -119,5 +116,16 @@ public sealed class OrderCancellationService : IOrderCancellationService
             order.OrderReference, shopId, order.CancelledBy, now, order.ReservationId);
 
         return OrderDecisionResult.Done(OrderResponse.From(order, now, _window), changed: true);
+    }
+
+    /// <summary>A refusal is an expected business outcome, so it is logged without a stack trace.</summary>
+    private void LogRefusal(Order order, OrderDecisionRuleException refusal)
+    {
+        if (refusal.Failure == OrderDecisionFailure.CancellationWindowClosed)
+        {
+            _logger.LogInformation(
+                "Cancellation of {OrderReference} refused: window closed at {ClosedAt}",
+                order.OrderReference, refusal.WindowClosedAt);
+        }
     }
 }

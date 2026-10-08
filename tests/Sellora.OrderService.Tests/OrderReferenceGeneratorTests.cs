@@ -3,8 +3,11 @@ using Sellora.OrderService.Domain.Orders;
 
 namespace Sellora.OrderService.Tests;
 
-public sealed class OrderReferenceGeneratorTests
+public sealed partial class OrderReferenceGeneratorTests
 {
+    [GeneratedRegex("^ORD-260918-[23456789ABCDEFGHJKMNPQRSTWXYZ]{6}$")]
+    private static partial Regex ReferenceFormat();
+
     [Fact]
     public void Reference_is_short_dated_and_free_of_ambiguous_characters()
     {
@@ -14,7 +17,7 @@ public sealed class OrderReferenceGeneratorTests
         {
             var reference = OrderReferenceGenerator.Generate(date);
 
-            Assert.Matches(new Regex("^ORD-260918-[23456789ABCDEFGHJKMNPQRSTWXYZ]{6}$"), reference);
+            Assert.Matches(ReferenceFormat(), reference);
             Assert.DoesNotContain(reference[11..], c => "01ILOUV".Contains(c));
         }
     }

@@ -15,6 +15,8 @@ namespace Sellora.OrderService.Tests;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class VanReturnServiceTests
 {
+    private static readonly JsonSerializerOptions CaseInsensitiveJson = new() { PropertyNameCaseInsensitive = true };
+
     private const string Correlation = "van-return-correlation";
 
     private readonly PostgreSqlFixture _fixture;
@@ -224,7 +226,7 @@ public sealed class VanReturnServiceTests
 
         var message = Assert.Single(await EventsAsync(declared.VanReturnId));
         var consumed = JsonSerializer.Deserialize<InventoryVanStockReturned>(
-            message.Payload, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })!;
+            message.Payload, CaseInsensitiveJson)!;
 
         Assert.Equal(message.OutboxId, consumed.EventId);
         Assert.Equal("VanStockReturned", consumed.EventType);

@@ -121,7 +121,7 @@ public sealed class VanReturnService : IVanReturnService
 
             var vanReturn = VanReturn.Declare(
                 companyId, salesRepId, _caller.DisplayName, agencyId, vanOwnerId.Value,
-                _caller.Subject!, named, _clock.GetUtcNow());
+                _caller.Subject, named, _clock.GetUtcNow());
 
             _db.VanReturns.Add(vanReturn);
             await _db.SaveChangesAsync(cancellationToken);
@@ -180,7 +180,7 @@ public sealed class VanReturnService : IVanReturnService
 
         try
         {
-            changed = vanReturn.Accept(agencyId, _caller.Subject!, counts, request.Note, now);
+            changed = vanReturn.Accept(agencyId, _caller.Subject, counts, request.Note, now);
         }
         catch (VanReturnRuleException exception)
         {

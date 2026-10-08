@@ -14,6 +14,9 @@ namespace Sellora.OrderService.Tests;
 [Collection(PostgreSqlCollection.Name)]
 public sealed class OrderSagaTests
 {
+    private static readonly string[] AllSteps = { "RepShopRelationship", "PriceResolution", "CreditLimit", "StockReservation" };
+    private static readonly bool[] FailedAtStockReservation = { true, true, true, false };
+
     private readonly PostgreSqlFixture _fixture;
     private readonly Guid _companyId = Guid.NewGuid();
     private readonly Guid _repId = Guid.NewGuid();
@@ -74,7 +77,7 @@ public sealed class OrderSagaTests
         Assert.Equal(_place.AgencyId, order.AgencyId);
         Assert.Equal("ScheduledDelivery", order.FulfilmentType);
         Assert.Equal(
-            new[] { "RepShopRelationship", "PriceResolution", "CreditLimit", "StockReservation" },
+            AllSteps,
             order.VerificationSteps.Select(step => step.Step));
         Assert.All(order.VerificationSteps, step => Assert.True(step.Passed));
 
@@ -156,7 +159,7 @@ public sealed class OrderSagaTests
         Assert.Equal("Sunlight Soap 100g", shortage.ProductName);
         Assert.Equal(6, shortage.ShortBy);
         Assert.Contains("short by 6", result.Rejection.Reason);
-        Assert.Equal(new[] { true, true, true, false }, result.Rejection.Steps.Select(step => step.Passed));
+        Assert.Equal(FailedAtStockReservation, result.Rejection.Steps.Select(step => step.Passed));
         Assert.Empty(_inventory.Released);
         Assert.Equal(0, await OrderCountAsync());
     }

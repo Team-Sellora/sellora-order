@@ -15,6 +15,8 @@ namespace Sellora.OrderService.Tests;
 /// </summary>
 public sealed class OrdersRouteImmutabilityTests
 {
+    private static readonly string[] DecisionBodyProperties = { "Decision", "Reason" };
+
     private static readonly string[] EditVerbs = { "PUT", "PATCH" };
 
     private static readonly string[] AllowedPutRoutes =
@@ -90,6 +92,6 @@ public sealed class OrdersRouteImmutabilityTests
             .Select(property => property.Name)
             .OrderBy(name => name);
 
-        Assert.Equal(new[] { "Decision", "Reason" }, bodyProperties);
+        Assert.Equal(DecisionBodyProperties, bodyProperties);
     }
 }

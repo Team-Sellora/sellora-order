@@ -10,6 +10,8 @@ namespace Sellora.OrderService.Tests;
 
 public sealed class OrdersControllerTests
 {
+    private static readonly JsonSerializerOptions WebJson = new(JsonSerializerDefaults.Web);
+
     private static readonly CreateOrderRequestBody ValidBody = new()
     {
         ShopId = Guid.NewGuid(),
@@ -32,6 +34,23 @@ public sealed class OrdersControllerTests
         var objectResult = Assert.IsType<ObjectResult>(result);
         Assert.Equal(400, objectResult.StatusCode);
         Assert.Contains("ImmediateCashSale", Assert.IsType<ProblemDetails>(objectResult.Value).Detail);
+    }
+
+    [Fact]
+    public async Task Missing_shop_id_reaches_the_service_as_empty_so_it_is_rejected_there()
+    {
+        var spy = new CreationSpy(CreateOrderResult.Failed(CreateOrderOutcome.InvalidRequest, "shopId is required."));
+        var controller = new OrdersController(spy, null!, null!)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+
+        var result = await controller.Create(
+            new CreateOrderRequestBody { FulfilmentType = "ScheduledDelivery", Lines = ValidBody.Lines },
+            CancellationToken.None);
+
+        Assert.Equal(Guid.Empty, spy.Received?.ShopId);
+        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
     }
 
     private static OrdersController Controller(CreateOrderResult result) => new(new CreationSpy(result), null!, null!)
@@ -101,7 +120,7 @@ public sealed class OrdersControllerTests
         // Same JSON options as MVC: unknown "total" is silently dropped.
         var body = JsonSerializer.Deserialize<CreateOrderRequestBody>(
             """{ "shopId": "11111111-1111-1111-1111-111111111111", "total": 1, "subtotal": 1, "lines": [{ "productId": "22222222-2222-2222-2222-222222222222", "quantity": 2, "unitPrice": 1 }] }""",
-            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+            WebJson);
 
         Assert.NotNull(body);
         Assert.Equal(2, Assert.Single(body!.Lines!).Quantity);
