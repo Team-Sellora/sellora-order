@@ -201,12 +201,13 @@ public sealed class CheckoutService : ICheckoutService
         {
             return PaymentResult.Failed(CheckoutOutcome.NotAwaitingCheckout, "A payment has already been recorded for this order.");
         }
-        catch (DbUpdateConcurrencyException)
+        catch (DbUpdateConcurrencyException exception)
         {
             // US-E4-5: the shop cancelled the order while the rep was paying.
             // Its OrderCancelled event makes Inventory return the stock that
             // was just confirmed, so nothing is lost; the rep is told why.
             _logger.LogWarning(
+                exception,
                 "Payment for order {OrderReference} not saved: the order changed during checkout (likely cancelled by the shop)",
                 order.OrderReference);
 
@@ -216,11 +217,11 @@ public sealed class CheckoutService : ICheckoutService
         }
         catch (Exception exception)
         {
-            _logger.LogError(
-                exception,
-                "Stock for order {OrderReference} is confirmed but the payment could not be saved; a retry will complete it",
-                order.OrderReference);
-            throw;
+            // Still a 500 for the caller; the context travels with the
+            // exception and is logged once by the global exception handler.
+            throw new InvalidOperationException(
+                $"Stock for order {order.OrderReference} is confirmed but the payment could not be saved; a retry will complete it.",
+                exception);
         }
 
         _logger.LogInformation(
@@ -254,6 +255,7 @@ public sealed class CheckoutService : ICheckoutService
             .Include(order => order.Lines)
             .Include(order => order.CheckIns)
             .Include(order => order.Payment)
+            .AsSplitQuery()
             .SingleOrDefaultAsync(
                 order => order.OrderId == orderId && order.SalesRepId == salesRepId,
                 cancellationToken);
