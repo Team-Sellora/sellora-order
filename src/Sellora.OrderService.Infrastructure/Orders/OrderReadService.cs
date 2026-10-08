@@ -69,6 +69,7 @@ public sealed class OrderReadService : IOrderReadService
             .Include(order => order.CheckIns)
             .Include(order => order.Payment)
             .Include(order => order.Decisions)
+            .AsSplitQuery()
             .ApplyCallerScope(_caller)
             .SingleOrDefaultAsync(order => order.OrderId == orderId, cancellationToken);
 
