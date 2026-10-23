@@ -1,0 +1,2 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1792316950182,3258,GET - List Notifications,200,OK,Thread Group 1-1,text,true,,39508,1585,1,1,https://sellora-notification-staging-g6csbfcqc6gmhtgd.eastasia-01.azurewebsites.net/api/notifications?page=1&pageSize=20,2949,0,642

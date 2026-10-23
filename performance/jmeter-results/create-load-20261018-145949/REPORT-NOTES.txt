@@ -1,0 +1,6 @@
+Screenshot saved for report update: Create-and-Read-Order-Terminal.png
+Observed: 5 clients x 2 iterations, 10 successful POST 201 and 10 successful correlated GET 200.
+POST mean 1677.1 ms, p95 2422 ms; GET mean 217.4 ms, p95 323 ms.
+POST missed proposed p95 <= 2000 ms despite zero request/assertion failures.
+Notification processing and cleanup remain unchecked.
+Notification direct base supplied by user: https://sellora-notification-staging-g6csbfcqc6gmhtgd.eastasia-01.azurewebsites.net

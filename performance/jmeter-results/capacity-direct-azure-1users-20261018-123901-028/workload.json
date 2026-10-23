@@ -1,0 +1,11 @@
+﻿{
+    "thinkTimeMs":  1000,
+    "durationSeconds":  180,
+    "users":  1,
+    "target":  "direct-azure",
+    "targets":  "Provisional: p95 \u003c= 2000 ms, errors \u003c 1%",
+    "identityModel":  "Concurrent clients sharing one Sales Rep token",
+    "measurement":  "Requests starting 30 to 180 seconds after first sample start",
+    "rampupSeconds":  10,
+    "warmupExcludedSeconds":  30
+}

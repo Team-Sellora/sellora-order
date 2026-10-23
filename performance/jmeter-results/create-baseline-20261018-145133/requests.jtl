@@ -1,0 +1,8 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1792315295944,1283,POST - Create Order,401,Unauthorized,Thread Group 1-1,,false,"Test failed: code expected to equal /
+
+****** received  : [[[4]]]01
+
+****** comparison: [[[2]]]01
+
+/",270,1599,1,1,https://sellora-order-staging-hjbqevb4eafbdydg.eastasia-01.azurewebsites.net/api/orders,1280,0,1091

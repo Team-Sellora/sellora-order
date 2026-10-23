@@ -1,0 +1,34 @@
+{
+  "Total" : {
+    "transaction" : "Total",
+    "sampleCount" : 3498,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 260.2035448827916,
+    "medianResTime" : 167.0,
+    "minResTime" : 113.0,
+    "maxResTime" : 3705.0,
+    "pct1ResTime" : 402.0,
+    "pct2ResTime" : 671.0,
+    "pct3ResTime" : 1926.9899999999766,
+    "throughput" : 23.64935670774993,
+    "receivedKBytesPerSec" : 169.47221428764595,
+    "sentKBytesPerSec" : 36.166887308922256
+  },
+  "GET - List Orders Direct Azure" : {
+    "transaction" : "GET - List Orders Direct Azure",
+    "sampleCount" : 3498,
+    "errorCount" : 0,
+    "errorPct" : 0.0,
+    "meanResTime" : 260.2035448827916,
+    "medianResTime" : 167.0,
+    "minResTime" : 113.0,
+    "maxResTime" : 3705.0,
+    "pct1ResTime" : 402.0,
+    "pct2ResTime" : 671.0,
+    "pct3ResTime" : 1926.9899999999766,
+    "throughput" : 23.64935670774993,
+    "receivedKBytesPerSec" : 169.47221428764595,
+    "sentKBytesPerSec" : 36.166887308922256
+  }
+}

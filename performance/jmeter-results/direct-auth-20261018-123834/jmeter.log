@@ -1,0 +1,66 @@
+2026-10-18 12:38:35,422 INFO o.a.j.u.JMeterUtils: Setting Locale to en_EN
+2026-10-18 12:38:35,441 INFO o.a.j.JMeter: Loading user properties from: C:\tools\apache-jmeter-5.6.3\bin\user.properties
+2026-10-18 12:38:35,442 INFO o.a.j.JMeter: Loading system properties from: C:\tools\apache-jmeter-5.6.3\bin\system.properties
+2026-10-18 12:38:35,442 INFO o.a.j.JMeter: Setting JMeter property: users=1
+2026-10-18 12:38:35,442 INFO o.a.j.JMeter: Setting JMeter property: rampup=1
+2026-10-18 12:38:35,442 INFO o.a.j.JMeter: Setting JMeter property: duration=1
+2026-10-18 12:38:35,442 INFO o.a.j.JMeter: Setting JMeter property: thinkTime=0
+2026-10-18 12:38:35,448 INFO o.a.j.JMeter: Copyright (c) 1998-2024 The Apache Software Foundation
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: Version 5.6.3
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: java.version=21.0.9
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: java.vm.name=Java HotSpot(TM) 64-Bit Server VM
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: os.name=Windows 11
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: os.arch=amd64
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: os.version=10.0
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: file.encoding=UTF-8
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: java.awt.headless=true
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: Max memory     =1073741824
+2026-10-18 12:38:35,450 INFO o.a.j.JMeter: Available Processors =16
+2026-10-18 12:38:35,458 INFO o.a.j.JMeter: Default Locale=English (EN)
+2026-10-18 12:38:35,459 INFO o.a.j.JMeter: JMeter  Locale=English (EN)
+2026-10-18 12:38:35,459 INFO o.a.j.JMeter: JMeterHome=C:\tools\apache-jmeter-5.6.3
+2026-10-18 12:38:35,459 INFO o.a.j.JMeter: user.dir  =C:\Users\navee\OneDrive\Desktop\CSP project
+2026-10-18 12:38:35,459 INFO o.a.j.JMeter: PWD       =C:\Users\navee\OneDrive\Desktop\CSP project
+2026-10-18 12:38:35,460 INFO o.a.j.JMeter: IP: 192.168.8.125 Name: NaveenTharuka FullName: NaveenTharuka
+2026-10-18 12:38:35,474 INFO o.a.j.s.FileServer: Default base='C:\Users\navee\OneDrive\Desktop\CSP project'
+2026-10-18 12:38:35,476 INFO o.a.j.s.FileServer: Set new base='C:\Users\navee\OneDrive\Desktop\CSP project\.'
+2026-10-18 12:38:35,704 INFO o.a.j.s.SaveService: Testplan (JMX) version: 2.2. Testlog (JTL) version: 2.2
+2026-10-18 12:38:35,735 INFO o.a.j.s.SaveService: Using SaveService properties version 5.0
+2026-10-18 12:38:35,737 INFO o.a.j.s.SaveService: Using SaveService properties file encoding UTF-8
+2026-10-18 12:38:35,740 INFO o.a.j.s.SaveService: Loading file: .\List Orders Direct Azure.jmx
+2026-10-18 12:38:35,784 INFO o.a.j.p.h.s.HTTPSamplerBase: Parser for text/html is org.apache.jmeter.protocol.http.parser.LagartoBasedHtmlParser
+2026-10-18 12:38:35,785 INFO o.a.j.p.h.s.HTTPSamplerBase: Parser for application/xhtml+xml is org.apache.jmeter.protocol.http.parser.LagartoBasedHtmlParser
+2026-10-18 12:38:35,785 INFO o.a.j.p.h.s.HTTPSamplerBase: Parser for application/xml is org.apache.jmeter.protocol.http.parser.LagartoBasedHtmlParser
+2026-10-18 12:38:35,785 INFO o.a.j.p.h.s.HTTPSamplerBase: Parser for text/xml is org.apache.jmeter.protocol.http.parser.LagartoBasedHtmlParser
+2026-10-18 12:38:35,785 INFO o.a.j.p.h.s.HTTPSamplerBase: Parser for text/vnd.wap.wml is org.apache.jmeter.protocol.http.parser.RegexpHTMLParser
+2026-10-18 12:38:35,785 INFO o.a.j.p.h.s.HTTPSamplerBase: Parser for text/css is org.apache.jmeter.protocol.http.parser.CssParser
+2026-10-18 12:38:35,816 INFO o.a.j.JMeter: Creating summariser <summary>
+2026-10-18 12:38:35,827 INFO o.a.j.e.StandardJMeterEngine: Running the test!
+2026-10-18 12:38:35,827 INFO o.a.j.s.SampleEvent: List of sample_variables: []
+2026-10-18 12:38:35,827 INFO o.a.j.s.SampleEvent: List of sample_variables: []
+2026-10-18 12:38:35,831 INFO o.a.j.e.u.CompoundVariable: Note: Function class names must contain the string: '.functions.'
+2026-10-18 12:38:35,831 INFO o.a.j.e.u.CompoundVariable: Note: Function class names must not contain the string: '.gui.'
+2026-10-18 12:38:35,912 INFO o.a.j.JMeter: Running test (1792307315912)
+2026-10-18 12:38:35,924 INFO o.a.j.e.StandardJMeterEngine: Starting ThreadGroup: 1 : Thread Group
+2026-10-18 12:38:35,925 INFO o.a.j.e.StandardJMeterEngine: Starting 1 threads for group Thread Group.
+2026-10-18 12:38:35,925 INFO o.a.j.e.StandardJMeterEngine: Thread will continue on error
+2026-10-18 12:38:35,925 INFO o.a.j.t.ThreadGroup: Starting thread group... number=1 threads=1 ramp-up=1 delayedStart=false
+2026-10-18 12:38:35,928 INFO o.a.j.t.ThreadGroup: Started thread group number 1
+2026-10-18 12:38:35,928 INFO o.a.j.e.StandardJMeterEngine: All thread groups have been started
+2026-10-18 12:38:35,929 INFO o.a.j.t.JMeterThread: Thread started: Thread Group 1-1
+2026-10-18 12:38:35,941 INFO o.a.j.p.h.s.HTTPHCAbstractImpl: Local host = NaveenTharuka
+2026-10-18 12:38:35,947 INFO o.a.j.p.h.s.HTTPHC4Impl: HTTP request retry count = 0
+2026-10-18 12:38:35,949 INFO o.a.j.s.SampleResult: Note: Sample TimeStamps are START times
+2026-10-18 12:38:35,949 INFO o.a.j.s.SampleResult: sampleresult.default.encoding is set to UTF-8
+2026-10-18 12:38:35,949 INFO o.a.j.s.SampleResult: sampleresult.useNanoTime=true
+2026-10-18 12:38:35,949 INFO o.a.j.s.SampleResult: sampleresult.nanoThreadSleep=5000
+2026-10-18 12:38:37,077 INFO o.a.j.p.h.s.h.LazyLayeredConnectionSocketFactory: Setting up HTTPS TrustAll Socket Factory
+2026-10-18 12:38:37,080 INFO o.a.j.u.JsseSSLManager: Using default SSL protocol: TLS
+2026-10-18 12:38:37,080 INFO o.a.j.u.JsseSSLManager: SSL session context: per-thread
+2026-10-18 12:38:37,217 INFO o.a.j.u.SSLManager: JmeterKeyStore Location:  type JKS
+2026-10-18 12:38:37,220 INFO o.a.j.u.SSLManager: KeyStore created OK
+2026-10-18 12:38:37,220 WARN o.a.j.u.SSLManager: Keystore file not found, loading empty keystore
+2026-10-18 12:38:37,775 INFO o.a.j.t.JMeterThread: Stopping because end time detected by thread: Thread Group 1-1
+2026-10-18 12:38:37,775 INFO o.a.j.t.JMeterThread: Thread finished: Thread Group 1-1
+2026-10-18 12:38:37,776 INFO o.a.j.e.StandardJMeterEngine: Notifying test listeners of end of test
+2026-10-18 12:38:37,779 INFO o.a.j.r.Summariser: summary =      1 in 00:00:02 =    0.5/s Avg:   873 Min:   873 Max:   873 Err:     0 (0.00%)

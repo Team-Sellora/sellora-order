@@ -1,0 +1,15 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1792315421146,1322,POST - Create Order,400,Bad Request,Thread Group 1-1,text,false,"Test failed: code expected to equal /
+
+****** received  : [[[400]]]
+
+****** comparison: [[[201]]]
+
+/",520,1599,1,1,https://sellora-order-staging-hjbqevb4eafbdydg.eastasia-01.azurewebsites.net/api/orders,1317,0,578
+1792315440526,687,POST - Create Order,400,Bad Request,Thread Group 1-1,text,false,"Test failed: code expected to equal /
+
+****** received  : [[[400]]]
+
+****** comparison: [[[201]]]
+
+/",520,1599,1,1,https://sellora-order-staging-hjbqevb4eafbdydg.eastasia-01.azurewebsites.net/api/orders,683,0,549

@@ -1,0 +1,2 @@
+timeStamp,elapsed,label,responseCode,responseMessage,threadName,dataType,success,failureMessage,bytes,sentBytes,grpThreads,allThreads,URL,Latency,IdleTime,Connect
+1792315694861,807,GET - Read Created Order,200,OK,Thread Group 1-1,text,true,,2011,1616,1,1,https://sellora-order-staging-hjbqevb4eafbdydg.eastasia-01.azurewebsites.net/api/orders/6302f5bc-3ced-4b6e-b830-e0ef7db1128b,804,0,640

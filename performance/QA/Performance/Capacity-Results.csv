@@ -1,0 +1,11 @@
+﻿Run,Path,ConcurrentClients,MeasuredRequests,P95ms,ErrorPercent,RequestsPerSecond,MeasuredFailures,FullRunFailures,ProvisionalGate
+capacity-1users-20261018-123043-280,Gateway,1,65,5787.0,3.076923,0.4207,2,2,FAIL
+capacity-5users-20261018-121644-072,Gateway,5,390,2242.35,0.25641,2.6258,1,1,FAIL
+capacity-5users-20261018-122414-686,Gateway,5,425,1700.2,1.176471,2.8799,5,5,FAIL
+capacity-direct-azure-10users-20261018-134021-776,Direct Azure,10,1217,522.3,0.0,8.2308,0,0,PASS
+capacity-direct-azure-1users-20261018-123901-028,Direct Azure,1,106,775.35,0.943396,0.7225,1,1,PASS
+capacity-direct-azure-20users-20261018-134408-840,Direct Azure,20,2436,494.15,0.0,16.4374,0,0,PASS
+capacity-direct-azure-30users-20261018-135151-233,Direct Azure,30,3498,671.0,0.0,23.6494,0,0,PASS
+capacity-direct-azure-50users-20261018-135614-434,Direct Azure,50,5177,1999.4,1.371451,34.9908,71,71,FAIL
+capacity-direct-azure-50users-20261018-140636-111,Direct Azure,50,5505,870.8,0.0,36.7856,0,4,PASS
+capacity-direct-azure-5users-20261018-133628-198,Direct Azure,5,608,593.2,0.0,4.1114,0,0,PASS

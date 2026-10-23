@@ -1,0 +1,2 @@
+# Preserve recorded test evidence exactly, including original line endings.
+performance/jmeter-results/** -text -diff

@@ -1,0 +1,18 @@
+Report evidence saved 18 October 2026.
+Notification baseline folder: notification-baseline-20261018-151907
+Baseline: HTTP 200, assertion success, 3258 ms for one request. Not a load-performance result.
+Correlated rows: 10
+Fully sent orders with exactly one matching OrderPlaced request: 10 / 10
+Recipients marked Sent: 20
+Event-to-completion minimum ms: 5860.66
+Event-to-completion maximum ms: 23970.59
+Event-to-completion average ms: 15934.67
+Evidence is a later snapshot of stored event and dispatch timestamps; not live backlog monitoring or proof of real inbox delivery.
+Notification read-load run has not yet been executed.
+Word report and submission archive still require the new Order write and Notification evidence update.
+
+Additional inbox evidence supplied by user: Inbox-Order-Notifications.jpeg and Opened-Order-Notification.jpeg.
+Visible batch order references matched to correlation CSV: 10 / 10.
+Inbox screenshot shows notification conversation entries for the ten batch orders. Earlier UI/baseline orders are also visible and must not be counted as batch results.
+Opened message: ORD-261018-EGXXMP; Scheduled delivery; Maliban Chocolate Biscuit; quantity 1; total LKR 150.00; displayed placed-at time 18 October 2026 14:59:54 local.
+Screenshots corroborate inbox arrival for displayed messages; they do not independently verify both intended recipient addresses or exact email-delivery latency. Gmail thread counts and template claims are not independent recipient-delivery measurements.
