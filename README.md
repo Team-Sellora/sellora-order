@@ -12,3 +12,15 @@ dotnet user-secrets --project src/Sellora.OrderService.Api set "ConnectionString
 ```
 
 Deployed environments set `ConnectionStrings__Default` in their app settings.
+
+## Load and performance testing
+
+JMeter plans, Order and Notification testing scripts, the report and recorded
+evidence are in [performance](performance/README.md). Open PowerShell in
+`performance` when using its documented commands. Tokens are supplied through
+environment variables and are not included in the repository.
+
+The saved tests cover Order List, scheduled order creation and retrieval,
+Notification List, and correlation of order events with notification records.
+Results are from the October 2026 staging runs; they are not a current production
+capacity guarantee. See the testing README for assumptions and remaining work.

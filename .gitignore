@@ -42,3 +42,11 @@ publish/
 *~
 .DS_Store
 Thumbs.db
+
+# Performance testing: retain evidence, omit generated dashboard dependencies.
+/performance/jmeter-results/**/html*/**
+!/performance/jmeter-results/**/html*/statistics.json
+/performance/QA/Performance/report-preview/
+/performance/**/__pycache__/
+!/performance/jmeter-results/**/*.log
+!/performance/QA/Performance/Sellora_Load_Testing_Submission.zip
