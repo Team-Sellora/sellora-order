@@ -1,0 +1,206 @@
+using Sellora.OrderService.Application.VanReturns;
+using Sellora.OrderService.Infrastructure.VanReturns;
+using Sellora.OrderService.Infrastructure.Outbox;
+using Sellora.OrderService.Application.Outbox;
+using Sellora.OrderService.Application.Events;
+using Sellora.OrderService.Api.Middleware;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using Sellora.OrderService.Api.Authorization;
+using Sellora.OrderService.Api.Identity;
+using Sellora.OrderService.Api.Tenancy;
+using Sellora.OrderService.Application.Checkout;
+using Sellora.OrderService.Application.Identity;
+using Sellora.OrderService.Application.Orders;
+using Sellora.OrderService.Domain.Tenancy;
+using Sellora.OrderService.Infrastructure.Checkout;
+using Sellora.OrderService.Infrastructure.Dependencies;
+using Sellora.OrderService.Infrastructure.Orders;
+using Sellora.OrderService.Infrastructure.Persistence;
+using Serilog;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Host.UseSerilog((context, configuration) => configuration
+    .ReadFrom.Configuration(context.Configuration)
+    .Enrich.FromLogContext()
+    .WriteTo.Console());
+
+var jwt = builder.Configuration.GetSection("Jwt");
+var audiences = jwt.GetSection("Audience").Get<string[]>()
+    ?? new[] { jwt["Audience"]! };
+
+builder.Services
+    .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
+    {
+        options.Authority = jwt["Authority"];
+        options.MetadataAddress = jwt["MetadataAddress"]!;
+        // Same as sellora-organization: keep WSO2's raw claim names
+        // ("roles", "companyId", "sub") so RolePolicies can match "roles".
+        options.MapInboundClaims = false;
+
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidIssuer = jwt["Issuer"],
+            ValidateAudience = true,
+            ValidAudiences = audiences,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
+            RoleClaimType = "roles"
+        };
+
+        // Local and staging hosts may not trust the shared WSO2 CA; the
+        // relaxation is limited to the identity provider's own host.
+        if (builder.Environment.IsDevelopment() || builder.Environment.IsStaging())
+        {
+            options.BackchannelHttpHandler = IdentityProviderBackchannel.CreateHandler(jwt["MetadataAddress"]);
+        }
+    });
+
+builder.Services.AddAuthorization(options => options.AddSelloraRolePolicies());
+
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<HttpTenantContext>();
+builder.Services.AddScoped<ITenantContext>(sp => sp.GetRequiredService<HttpTenantContext>());
+builder.Services.AddScoped<ISystemTenantContext>(sp => sp.GetRequiredService<HttpTenantContext>());
+builder.Services.AddScoped<ICurrentUserContext, HttpCurrentUserContext>();
+builder.Services.AddScoped<IAccessTokenAccessor, HttpAccessTokenAccessor>();
+
+// US-E4-1b: Organization, Catalog and Inventory clients with timeouts and
+// circuit breakers. Registration only — startup never calls them.
+builder.Services.AddOrderDependencies(builder.Configuration);
+builder.Services.AddSingleton(TimeProvider.System);
+
+var connectionString = builder.Configuration.GetConnectionString("Default");
+
+if (string.IsNullOrWhiteSpace(connectionString))
+{
+    throw new InvalidOperationException(
+        "The order database connection string is not configured.");
+}
+
+builder.Services.AddDbContext<OrderDbContext>(options =>
+    options.UseNpgsql(connectionString));
+
+// US-E4-4: order events go through the transactional outbox, so an order
+// change and its events commit together; the relay publishes them to Kafka.
+builder.Services.AddScoped<ICorrelationIdAccessor, HttpCorrelationIdAccessor>();
+builder.Services.AddScoped<IOutboxWriter, EntityFrameworkOutboxWriter>();
+builder.Services.AddScoped<IOrderEventOutbox, OrderEventOutbox>();
+builder.Services.AddScoped<IVanReturnEventOutbox, VanReturnEventOutbox>();
+builder.Services.Configure<KafkaOptions>(builder.Configuration.GetSection(KafkaOptions.SectionName));
+builder.Services.Configure<OutboxRelayOptions>(builder.Configuration.GetSection(OutboxRelayOptions.SectionName));
+builder.Services.AddSingleton<IEventPublisher, KafkaEventPublisher>();
+
+if (!builder.Environment.IsEnvironment("Testing"))
+{
+    builder.Services.AddHostedService<OutboxRelayService>();
+}
+
+builder.Services.AddScoped<IOrderCreationService, OrderCreationService>();
+builder.Services.AddScoped<IOrderReadService, OrderReadService>();
+
+// US-E4-5: agency approval and the shop's cancellation window (minutes from
+// configuration, default 60).
+builder.Services.Configure<CancellationOptions>(builder.Configuration.GetSection(CancellationOptions.Section));
+builder.Services.AddScoped<IOrderApprovalService, OrderApprovalService>();
+builder.Services.AddScoped<IOrderCancellationService, OrderCancellationService>();
+
+// US-E4-6: end-of-route van returns.
+builder.Services.AddScoped<IVanReturnService, VanReturnService>();
+
+builder.Services.AddMemoryCache();
+builder.Services.Configure<CallerScopeOptions>(builder.Configuration.GetSection(CallerScopeOptions.Section));
+
+// US-E4-3: GPS gate limits come from configuration, never hard-coded.
+builder.Services.Configure<CheckInOptions>(builder.Configuration.GetSection(CheckInOptions.Section));
+builder.Services.AddScoped<ICheckoutService, CheckoutService>();
+
+builder.Services.AddProblemDetails();
+builder.Services.AddHealthChecks();
+builder.Services.AddControllers();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Azure terminates TLS before forwarding requests to this container.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
+
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? Array.Empty<string>();
+
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins);
+        }
+
+        policy.AllowAnyHeader().AllowAnyMethod();
+    });
+});
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
+
+var app = builder.Build();
+
+app.UseExceptionHandler();
+
+// First, so every log line and every event for the request shares one ID.
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseSerilogRequestLogging();
+app.UseForwardedHeaders();
+
+if (!app.Environment.IsEnvironment("Testing"))
+{
+    await using var scope = app.Services.CreateAsyncScope();
+    var db = scope.ServiceProvider.GetRequiredService<OrderDbContext>();
+    await db.Database.MigrateAsync();
+}
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
+// Containers receive internal HTTP; HTTPS is terminated by APIM / Azure.
+if (!app.Environment.IsEnvironment("Container"))
+{
+    app.UseHttpsRedirection();
+}
+
+app.UseCors();
+app.UseAuthentication();
+app.UseAuthorization();
+
+// After authentication: resolve the caller's hierarchy scope from
+// Organization (cached), used by HttpCurrentUserContext.
+app.UseMiddleware<CallerScopeMiddleware>();
+
+app.MapControllers();
+app.MapHealthChecks("/health");
+
+app.MapGet("/whoami", (HttpContext context) =>
+    Results.Ok(context.User.Claims.Select(claim => new { claim.Type, claim.Value })))
+    .RequireAuthorization();
+
+await app.RunAsync();
+
+public partial class Program
+{
+    protected Program()
+    {
+    }
+}
